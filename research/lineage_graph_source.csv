@@ -1,0 +1,13 @@
+source,target,relation
+Human motion,Sparse tasks,information
+Sparse tasks,Dense body,adds body targets
+Dense body,Interaction,adds contact/object state
+Interaction,Physics control,adds dynamics
+Mink,Sparse tasks,backend
+Mink,Dense body,GMR / controlled
+PyRoki,Dense body,ProtoMotions v3
+Sequential SOCP,Interaction,OmniRetarget
+Sparse tasks,G1 reference,outputs
+Dense body,G1 reference,outputs
+Interaction,G1 reference,outputs
+G1 reference,Physics control,consumed by tracker

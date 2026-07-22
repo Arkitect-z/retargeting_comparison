@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .calibration import build_evaluator_protocol, human_heading_yaw
 from .robot_model import CanonicalRobotModel
 from .rotations import quaternion_wxyz_to_matrix, yaw_from_matrix
 from .schemas import CanonicalG1, CanonicalHuman
@@ -64,6 +65,12 @@ def _percentile(value: np.ndarray, q: float) -> float:
     return float(np.percentile(finite, q)) if len(finite) else float("nan")
 
 
+def _mean_or_zero(value: np.ndarray) -> float:
+    finite = np.asarray(value, dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    return float(np.mean(finite)) if len(finite) else 0.0
+
+
 def _human_semantics(human: CanonicalHuman, frame_indices: np.ndarray) -> dict[str, np.ndarray]:
     index = {name: i for i, name in enumerate(human.joint_names.astype(str))}
     missing = [joint for joint in HUMAN_SEMANTIC_JOINTS.values() if joint not in index]
@@ -73,18 +80,6 @@ def _human_semantics(human: CanonicalHuman, frame_indices: np.ndarray) -> dict[s
         semantic: human.world_positions[frame_indices, index[joint]]
         for semantic, joint in HUMAN_SEMANTIC_JOINTS.items()
     }
-
-
-def _static_height_scale(
-    human_positions: dict[str, np.ndarray], robot_positions: dict[str, np.ndarray]
-) -> float:
-    human_foot = 0.5 * (human_positions["left_toe"][0] + human_positions["right_toe"][0])
-    robot_foot = 0.5 * (robot_positions["left_toe"] + robot_positions["right_toe"])
-    human_height = float(np.linalg.norm(human_positions["head"][0] - human_foot))
-    robot_height = float(np.linalg.norm(robot_positions["head"] - robot_foot))
-    if human_height < 0.5 or robot_height < 0.5:
-        raise ValueError("Implausible source or robot height for static scaling")
-    return robot_height / human_height
 
 
 def _unit(vector: np.ndarray) -> np.ndarray:
@@ -121,6 +116,7 @@ def evaluate_motion(
     human: CanonicalHuman,
     motion: CanonicalG1,
     robot: CanonicalRobotModel,
+    protocol: dict[str, Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     human.validate()
     motion.validate(source_frame_count=len(human.timestamps))
@@ -133,12 +129,23 @@ def evaluate_motion(
         semantic: np.stack([frame[semantic] for frame in robot_frames])
         for semantic in HUMAN_SEMANTIC_JOINTS
     }
-    scale = _static_height_scale(human_points, robot_frames[0])
+    if protocol is None:
+        protocol = build_evaluator_protocol(
+            human, robot, source_path="in-memory-canonical-source"
+        )
+    if int(protocol.get("schema_version", 0)) != 2:
+        raise ValueError("Evaluator protocol v2 is required")
+    scale = float(protocol["scale"]["common_static_scale"])
+    method = str(motion.metadata.get("method", "unknown"))
+    native_scale_entry = protocol.get("native_root_scales", {}).get(method)
+    if native_scale_entry is None:
+        native_scale = scale
+        native_scale_policy = "undeclared; common scale fallback"
+    else:
+        native_scale = float(native_scale_entry["value"])
+        native_scale_policy = str(native_scale_entry["policy"])
 
-    human_root_rotation = quaternion_wxyz_to_matrix(
-        human.world_rotations[frame_indices, 0]
-    )
-    human_yaw = np.unwrap(yaw_from_matrix(human_root_rotation))
+    human_yaw = human_heading_yaw(human, frame_indices)
     robot_rotation = quaternion_wxyz_to_matrix(motion.qpos[:, 3:7])
     robot_yaw = np.unwrap(yaw_from_matrix(robot_rotation))
     human_root = human_points["root"]
@@ -183,11 +190,25 @@ def evaluate_motion(
     source_root_delta = (human_root - human_root[0]) * scale
     robot_root_delta = robot_root - robot_root[0]
     root_translation = np.linalg.norm(robot_root_delta - source_root_delta, axis=1)
+    native_root_translation = np.linalg.norm(
+        robot_root_delta - (human_root - human_root[0]) * native_scale,
+        axis=1,
+    )
+    human_root_xy = human_root[:, :2] - human_root[0, :2]
+    robot_root_xy = robot_root[:, :2] - robot_root[0, :2]
+    root_xy_energy = float(np.sum(human_root_xy**2))
+    effective_root_scale = (
+        float(np.sum(human_root_xy * robot_root_xy) / root_xy_energy)
+        if root_xy_energy > 1e-12
+        else float("nan")
+    )
+    scale_invariant_root_translation = np.linalg.norm(
+        robot_root_delta - (human_root - human_root[0]) * effective_root_scale,
+        axis=1,
+    )
+    yaw_delta = robot_yaw - human_yaw
     yaw_error = np.abs(
-        np.arctan2(
-            np.sin((robot_yaw - robot_yaw[0]) - (human_yaw - human_yaw[0])),
-            np.cos((robot_yaw - robot_yaw[0]) - (human_yaw - human_yaw[0])),
-        )
+        np.arctan2(np.sin(yaw_delta), np.cos(yaw_delta))
     )
 
     dt = 1.0 / motion.fps
@@ -215,9 +236,10 @@ def evaluate_motion(
                 np.linalg.norm(np.diff(robot_points[semantic][:, :2], axis=0), axis=1)
                 / dt
             )
-            foot_speed[0, side] = foot_speed[1, side]
     source_contacts = human.foot_contact_labels[frame_indices]
-    skating = source_contacts & (foot_speed > 0.01)
+    skating_threshold = float(protocol["thresholds"]["foot_skating_speed_m_s"])
+    penetration_threshold = float(protocol["thresholds"]["ground_penetration_m"])
+    skating = source_contacts & (foot_speed > skating_threshold)
 
     penetration = np.zeros(len(motion.qpos))
     self_contact_count = np.zeros(len(motion.qpos), dtype=np.int64)
@@ -234,15 +256,30 @@ def evaluate_motion(
         pose_jump[1:] = np.sqrt(
             np.mean(np.sum(np.diff(semantic_stack, axis=0) ** 2, axis=2), axis=1)
         )
-    artifact = (
-        invalid
-        | (penetration > 0.01)
-        | (limit_violation > 0.0)
-        | np.any(skating, axis=1)
+    penetration_artifact = penetration > penetration_threshold
+    limit_artifact = limit_violation > 0.0
+    skating_artifact = np.any(skating, axis=1)
+    artifact = invalid | penetration_artifact | limit_artifact | skating_artifact
+    artifact_causes = np.asarray(
+        [
+            "+".join(
+                cause
+                for cause, active in (
+                    ("invalid", bool(invalid[frame])),
+                    ("penetration", bool(penetration_artifact[frame])),
+                    ("joint-limit", bool(limit_artifact[frame])),
+                    ("left-skating", bool(skating[frame, 0])),
+                    ("right-skating", bool(skating[frame, 1])),
+                )
+                if active
+            )
+            or "none"
+            for frame in range(len(motion.qpos))
+        ],
+        dtype=object,
     )
 
-    table = pd.DataFrame(
-        {
+    columns: dict[str, Any] = {
             "source_frame_idx": frame_indices,
             "valid": motion.valid,
             "rf_kpe_all_m": all_kpe,
@@ -251,6 +288,13 @@ def evaluate_motion(
             "bone_direction_error_rad": np.mean(bone_angles, axis=1),
             "bend_plane_error_rad": np.mean(bend_plane, axis=1),
             "root_translation_error_m": root_translation,
+            "root_translation_common_scale_error_m": root_translation,
+            "root_translation_native_scale_error_m": native_root_translation,
+            "root_translation_scale_invariant_error_m": scale_invariant_root_translation,
+            "effective_root_xy_scale": np.full(len(motion.qpos), effective_root_scale),
+            "root_scale_bias_fraction": np.full(
+                len(motion.qpos), effective_root_scale / scale - 1.0
+            ),
             "root_yaw_error_rad": yaw_error,
             "joint_velocity_rms_rad_s": joint_velocity,
             "joint_acceleration_rms_rad_s2": joint_acceleration,
@@ -260,21 +304,43 @@ def evaluate_motion(
             "right_foot_speed_m_s": foot_speed[:, 1],
             "left_source_stance": source_contacts[:, 0],
             "right_source_stance": source_contacts[:, 1],
-            "foot_skating": np.any(skating, axis=1),
+            "left_foot_skating": skating[:, 0],
+            "right_foot_skating": skating[:, 1],
+            "foot_skating": skating_artifact,
             "ground_penetration_depth_m": penetration,
+            "ground_penetration_artifact": penetration_artifact,
             "joint_limit_violation_rad": limit_violation,
+            "joint_limit_artifact": limit_artifact,
+            "invalid_artifact": invalid,
             "self_contact_count_diagnostic": self_contact_count,
             "artifact": artifact,
+            "artifact_causes": artifact_causes,
             "solve_time_s": motion.per_frame_solve_time_s,
-        }
+    }
+    for semantic, values in errors.items():
+        columns[f"rf_kpe_{semantic}_m"] = values
+    table = pd.DataFrame(columns)
+    stance_speeds = foot_speed[source_contacts]
+    stance_heights = np.concatenate(
+        [
+            robot_points[semantic][source_contacts[:, side], 2]
+            for side, semantic in enumerate(("left_toe", "right_toe"))
+        ]
     )
     summary: dict[str, Any] = {
-        "method": motion.metadata.get("method", "unknown"),
+        "method": method,
+        "evaluator_schema_version": 2,
+        "evaluator_protocol_sha256": protocol.get("manifest_sha256"),
         "frames": int(len(table)),
         "source_frames": int(len(human.timestamps)),
         "completion_ratio": float(len(table) / len(human.timestamps)),
         "completion_status": motion.metadata.get("completion_status"),
         "static_height_scale": scale,
+        "common_static_scale": scale,
+        "native_root_scale": native_scale,
+        "native_root_scale_policy": native_scale_policy,
+        "effective_root_xy_scale": effective_root_scale,
+        "root_scale_bias_fraction": effective_root_scale / scale - 1.0,
         "rf_kpe_all_mean_m": float(table.rf_kpe_all_m.mean()),
         "rf_kpe_all_p95_m": _percentile(table.rf_kpe_all_m.to_numpy(), 95),
         "rf_kpe_targeted_mean_m": float(table.rf_kpe_targeted_m.mean()),
@@ -282,23 +348,61 @@ def evaluate_motion(
         "bone_direction_mean_rad": float(table.bone_direction_error_rad.mean()),
         "bend_plane_mean_rad": float(table.bend_plane_error_rad.mean()),
         "root_translation_mean_m": float(table.root_translation_error_m.mean()),
+        "root_translation_common_scale_mean_m": float(
+            table.root_translation_common_scale_error_m.mean()
+        ),
+        "root_translation_native_scale_mean_m": float(
+            table.root_translation_native_scale_error_m.mean()
+        ),
+        "root_translation_scale_invariant_mean_m": float(
+            table.root_translation_scale_invariant_error_m.mean()
+        ),
         "root_yaw_mean_rad": float(table.root_yaw_error_rad.mean()),
+        "root_yaw_p95_rad": _percentile(table.root_yaw_error_rad.to_numpy(), 95),
         "joint_velocity_rms_mean_rad_s": float(table.joint_velocity_rms_rad_s.mean()),
+        "joint_velocity_rms_p95_rad_s": _percentile(
+            table.joint_velocity_rms_rad_s.to_numpy(), 95
+        ),
+        "joint_velocity_rms_max_rad_s": float(table.joint_velocity_rms_rad_s.max()),
         "joint_acceleration_rms_mean_rad_s2": float(
             table.joint_acceleration_rms_rad_s2.mean()
+        ),
+        "joint_acceleration_rms_p95_rad_s2": _percentile(
+            table.joint_acceleration_rms_rad_s2.to_numpy(), 95
+        ),
+        "joint_acceleration_rms_max_rad_s2": float(
+            table.joint_acceleration_rms_rad_s2.max()
         ),
         "joint_jerk_rms_p95_rad_s3": _percentile(
             table.joint_jerk_rms_rad_s3.to_numpy(), 95
         ),
+        "joint_jerk_rms_max_rad_s3": float(table.joint_jerk_rms_rad_s3.max()),
         "pose_jump_p95_m": _percentile(table.pose_jump_rms_m.to_numpy(), 95),
+        "pose_jump_max_m": float(table.pose_jump_rms_m.max()),
         "foot_skating_frame_rate": float(table.foot_skating.mean()),
+        "foot_skating_duration_s": float(table.foot_skating.sum() * dt),
+        "stance_foot_speed_p95_m_s": (
+            _percentile(stance_speeds, 95) if len(stance_speeds) else 0.0
+        ),
+        "stance_foot_speed_max_m_s": float(np.max(stance_speeds, initial=0.0)),
+        "stance_foot_height_mean_m": _mean_or_zero(stance_heights),
+        "stance_foot_height_p95_m": (
+            _percentile(stance_heights, 95) if len(stance_heights) else 0.0
+        ),
         "ground_penetration_frame_rate": float(
-            (table.ground_penetration_depth_m > 0.01).mean()
+            table.ground_penetration_artifact.mean()
+        ),
+        "ground_penetration_p95_m": _percentile(
+            table.ground_penetration_depth_m.to_numpy(), 95
         ),
         "ground_penetration_max_m": float(table.ground_penetration_depth_m.max()),
-        "joint_limit_violation_frame_rate": float(
-            (table.joint_limit_violation_rad > 0).mean()
+        "ground_penetration_max_frame": int(
+            table.ground_penetration_depth_m.to_numpy().argmax()
         ),
+        "joint_limit_violation_frame_rate": float(
+            table.joint_limit_artifact.mean()
+        ),
+        "invalid_frame_rate": float(table.invalid_artifact.mean()),
         "artifact_rate": float(table.artifact.mean()),
         "solve_time_median_s": float(table.solve_time_s.median()),
         "solve_time_p95_s": _percentile(table.solve_time_s.to_numpy(), 95),

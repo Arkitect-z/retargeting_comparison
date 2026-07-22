@@ -26,6 +26,23 @@ def build_parser() -> argparse.ArgumentParser:
     models.add_argument("--body-models-root")
     models.add_argument("--config", default="configs/stage1.yaml")
     models.add_argument("--output", default="manifests/body_models.yaml")
+    evaluator = sub.add_parser(
+        "freeze-evaluator",
+        help="freeze the method-independent Stage 1 scale and heading protocol",
+    )
+    evaluator.add_argument("--repo-root", default=".")
+    evaluator.add_argument("--sequence", default="manifests/pilot_sequence.yaml")
+    evaluator.add_argument("--output", default="manifests/evaluator.yaml")
+    candidates = sub.add_parser(
+        "gate-candidates",
+        help="run bounded integration-readiness gates for conditional candidates",
+    )
+    candidates.add_argument("--repo-root", default=".")
+    adapters = sub.add_parser(
+        "audit-source-adapters",
+        help="audit core native source conversions against canonical LAFAN",
+    )
+    adapters.add_argument("--repo-root", default=".")
     run_method = sub.add_parser("run-method", help="run one frozen retargeting method")
     run_method.add_argument(
         "--method", choices=("sparse", "dense", "gmr", "omniretarget", "holosoma"), required=True
@@ -35,10 +52,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_method.add_argument("--max-frames", type=int)
     run_method.add_argument("--repo-root", default=".")
     run_method.add_argument("--refresh-timing", action="store_true")
+    run_method.add_argument(
+        "--revision",
+        help="immutable controlled-baseline run suffix, e.g. v2",
+    )
     evaluate = sub.add_parser("evaluate", help="evaluate one canonical run")
     evaluate.add_argument("--run", required=True)
     evaluate.add_argument("--source")
     evaluate.add_argument("--robot-xml")
+    evaluate.add_argument("--evaluator", default="manifests/evaluator.yaml")
     evaluate.add_argument("--output-dir", default="metrics/runs")
     interaction = sub.add_parser("run-interaction", help="run an interaction ablation")
     interaction.add_argument("--case", choices=("box", "climb"), required=True)
@@ -105,8 +127,47 @@ def main(argv: list[str] | None = None) -> int:
             repo_root=root,
         )
         return 0
+    if args.command == "freeze-evaluator":
+        from .calibration import freeze_evaluator_protocol
+        from .robot_model import CanonicalRobotModel, default_robot_scene
+        from .schemas import CanonicalHuman
+
+        root = Path(args.repo_root).resolve()
+        sequence_path = Path(args.sequence)
+        if not sequence_path.is_absolute():
+            sequence_path = root / sequence_path
+        sequence = load_yaml(sequence_path)
+        human = CanonicalHuman.load(root / sequence["canonical_path"])
+        robot = CanonicalRobotModel(default_robot_scene(root))
+        output = Path(args.output)
+        if not output.is_absolute():
+            output = root / output
+        freeze_evaluator_protocol(
+            human,
+            robot,
+            output,
+            source_path=sequence["canonical_path"],
+        )
+        print(output)
+        return 0
+    if args.command == "gate-candidates":
+        from .candidate_gate import gate_candidates
+
+        rows = gate_candidates(args.repo_root)
+        for row in rows:
+            print(f"{row['candidate']}: {row['status']} — {row['reason']}")
+        return 0
+    if args.command == "audit-source-adapters":
+        from .source_adapter_audit import audit_source_adapters
+
+        rows = audit_source_adapters(args.repo_root)
+        for row in rows:
+            print(f"{row['adapter']}: {row['status']}")
+        return 0
     if args.command == "evaluate":
+        from .calibration import load_evaluator_protocol
         from .evaluator import evaluate_motion, save_evaluation
+        from .io_utils import sha256_file
         from .robot_model import CanonicalRobotModel, default_robot_scene
         from .schemas import CanonicalG1, CanonicalHuman
 
@@ -117,7 +178,12 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--source is required when the run metadata has no canonical_source_path")
         human = CanonicalHuman.load(source_path)
         robot = CanonicalRobotModel(args.robot_xml or default_robot_scene())
-        table, summary = evaluate_motion(human, motion, robot)
+        protocol_path = Path(args.evaluator)
+        if not protocol_path.is_absolute():
+            protocol_path = Path.cwd() / protocol_path
+        protocol = load_evaluator_protocol(protocol_path)
+        protocol["manifest_sha256"] = sha256_file(protocol_path)
+        table, summary = evaluate_motion(human, motion, robot, protocol)
         run_id = str(motion.metadata.get("method") or run_path.parent.name).replace("/", "-")
         save_evaluation(table, summary, args.output_dir, run_id)
         return 0
@@ -126,7 +192,11 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.refresh_timing:
             path = refresh_method_timing(
-                args.method, args.sequence, repo_root=args.repo_root, seed=args.seed
+                args.method,
+                args.sequence,
+                repo_root=args.repo_root,
+                seed=args.seed,
+                revision=args.revision,
             )
             print(path)
             return 0
@@ -137,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
             repo_root=args.repo_root,
             seed=args.seed,
             max_frames=args.max_frames,
+            revision=args.revision,
         )
         print(f"{manifest.run_id}: {manifest.status.value}")
         from .schemas import RunStatus

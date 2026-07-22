@@ -14,6 +14,9 @@
     rf_kpe_all_mean_m: { label: "RF-KPE all", unit: "m", digits: 4 },
     rf_kpe_targeted_mean_m: { label: "Targeted RF-KPE", unit: "m", digits: 4 },
     rf_kpe_untracked_mean_m: { label: "Untracked RF-KPE", unit: "m", digits: 4 },
+    root_translation_common_scale_mean_m: { label: "Root error · common scale", unit: "m", digits: 4 },
+    root_translation_native_scale_mean_m: { label: "Root error · native scale", unit: "m", digits: 4 },
+    root_translation_scale_invariant_mean_m: { label: "Root error · path shape", unit: "m", digits: 4 },
     rf_kpe_all_m: { label: "RF-KPE all", unit: "m", digits: 3 },
     rf_kpe_targeted_m: { label: "Targeted KPE", unit: "m", digits: 3 },
     rf_kpe_untracked_m: { label: "Untracked KPE", unit: "m", digits: 3 },
@@ -214,7 +217,7 @@
 
     DATA.core.forEach((row, index) => {
       const method = row.label;
-      const radius = Math.sqrt(Number(row.artifact_rate)) * 38;
+      const radius = 7 + Math.sqrt(Number(row.artifact_rate)) * 30;
       const px = x(Number(row.end_to_end_rtf_median));
       const py = y(Number(row[frontierMetric]));
       const group = svgNode("g", { class: "data-point", tabindex: "0", role: "button", "aria-label": `${METHOD_META[method].label}, RTF ${format(row.end_to_end_rtf_median, 3)}, ${metric.label} ${format(row[frontierMetric], 4)} metres` });
@@ -311,7 +314,7 @@
         if (flag) svg.append(svgNode("rect", { x: x(frame), y: rowY, width: Math.max(1.3, (width - margin.left - margin.right) / 600), height: 5, fill: METHOD_META[method].color, opacity: .65 }));
       });
     });
-    svg.append(svgNode("text", { class: "axis-label", x: margin.left, y: artifactStart - 8 }, "ARTIFACT FLAGS BY METHOD"));
+    svg.append(svgNode("text", { class: "axis-label", x: margin.left, y: artifactStart - 8 }, "CAUSE-TRIGGERED FRAME FLAGS BY METHOD"));
     const head = svgNode("line", { id: "timeline-playhead", class: "playhead", x1: x(timelineState.frame), x2: x(timelineState.frame), y1: margin.top, y2: plotBottom + 67 });
     svg.append(head);
     svg.dataset.plotLeft = margin.left;
@@ -332,7 +335,11 @@
     const right = Number(svg.dataset.plotRight);
     const frame = Math.round(clamp((px - left) / (right - left), 0, 1) * (DATA.pilot.num_frames - 1));
     updateTimelineFrame(frame);
-    const rows = [...timelineState.active].map((method) => `<span>${METHOD_META[method].short}</span><b>${format(DATA.frame_series[method][timelineState.metric][frame], METRICS[timelineState.metric].digits)}</b>`).join("");
+    const rows = [...timelineState.active].map((method) => {
+      const cause = DATA.frame_series[method].artifact_causes[frame];
+      const suffix = cause && cause !== "none" ? ` · ${cause}` : "";
+      return `<span>${METHOD_META[method].short}${suffix}</span><b>${format(DATA.frame_series[method][timelineState.metric][frame], METRICS[timelineState.metric].digits)}</b>`;
+    }).join("");
     showTooltip($("#timeline-tooltip"), event, `<strong>Frame ${String(frame).padStart(3,"0")} · ${(frame / Number(DATA.pilot.fps)).toFixed(2)} s</strong><div class="tooltip-grid">${rows}</div>`);
   }
 
@@ -357,7 +364,9 @@
     METHODS.filter((method) => timelineState.active.has(method)).forEach((method) => {
       const card = htmlNode("div", "frame-value");
       card.style.cssText = methodStyle(method);
-      card.append(htmlNode("small", "", METHOD_META[method].short), htmlNode("strong", "", `${format(DATA.frame_series[method][timelineState.metric][frame], METRICS[timelineState.metric].digits)} ${METRICS[timelineState.metric].unit}`));
+      const cause = DATA.frame_series[method].artifact_causes[frame];
+      const label = cause && cause !== "none" ? `${METHOD_META[method].short} · ${cause}` : METHOD_META[method].short;
+      card.append(htmlNode("small", "", label), htmlNode("strong", "", `${format(DATA.frame_series[method][timelineState.metric][frame], METRICS[timelineState.metric].digits)} ${METRICS[timelineState.metric].unit}`));
       values.append(card);
     });
   }

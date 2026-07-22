@@ -29,8 +29,9 @@ METHOD_ENVIRONMENTS = {
 }
 
 
-def _variant_label(method: str, seed: str) -> str:
-    return f"sparse-{seed.lower()}" if method == "sparse" else method
+def _variant_label(method: str, seed: str, revision: str | None = None) -> str:
+    label = f"sparse-{seed.lower()}" if method == "sparse" else method
+    return f"{label}-{revision}" if revision else label
 
 
 def utc_now() -> str:
@@ -78,7 +79,12 @@ def _aggregate_sha256(paths: list[Path]) -> str:
 
 def _method_config_hash(root: Path, method: str) -> str:
     if method in {"sparse", "dense"}:
-        return sha256_file(root / "configs" / "controlled_mink.yaml")
+        return _aggregate_sha256(
+            [
+                root / "configs" / "controlled_mink.yaml",
+                root / "manifests" / "evaluator.yaml",
+            ]
+        )
     if method == "gmr":
         return _aggregate_sha256(
             [
@@ -236,6 +242,7 @@ def run_method(
     repo_root: str | Path = ".",
     seed: str = "neutral",
     max_frames: int | None = None,
+    revision: str | None = None,
 ) -> RunManifest:
     root = Path(repo_root).resolve()
     method = "omniretarget" if method == "holosoma" else method
@@ -243,6 +250,8 @@ def run_method(
         raise ValueError(f"Unknown method {method!r}")
     if method != "sparse" and seed != "neutral":
         raise ValueError("Only Sparse exposes the A/B initial-pose seeds")
+    if revision and method not in {"sparse", "dense"}:
+        raise ValueError("Run revisions are currently reserved for controlled baselines")
     sequence_path = Path(sequence_manifest)
     if not sequence_path.is_absolute():
         sequence_path = root / sequence_path
@@ -251,7 +260,7 @@ def run_method(
         raise RuntimeError("Refusing a sequence manifest without the Stage 1 Full-LAFAN hard stop")
     canonical_source = root / sequence["canonical_path"]
     native_source = root / sequence["cropped_source_file"]
-    label = _variant_label(method, seed)
+    label = _variant_label(method, seed, revision)
     if max_frames is not None:
         label += f"-smoke{max_frames}"
     run_id = f"{sequence['sequence_id']}__{label}"
@@ -371,6 +380,7 @@ def refresh_method_timing(
     sequence_manifest: str | Path,
     repo_root: str | Path = ".",
     seed: str = "neutral",
+    revision: str | None = None,
 ) -> Path:
     """Create a new immutable timing revision with initialization separated."""
     root = Path(repo_root).resolve()
@@ -381,7 +391,7 @@ def refresh_method_timing(
     sequence = load_yaml(sequence_path)
     canonical_source = root / sequence["canonical_path"]
     native_source = root / sequence["cropped_source_file"]
-    label = _variant_label(method, seed)
+    label = _variant_label(method, seed, revision)
     base_dir = root / "runs" / sequence["sequence_id"] / label
     revision = base_dir / "timing_refined"
     output_path = base_dir / "timing_refined.json"

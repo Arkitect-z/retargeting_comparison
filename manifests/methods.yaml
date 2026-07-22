@@ -1,13 +1,17 @@
-frozen_at_utc: '2026-07-22T11:30:38.271829+00:00'
+frozen_at_utc: '2026-07-22T16:43:57.348436+00:00'
 required:
 - name: sparse
   implementation: controlled Mink baseline
   config: configs/controlled_mink.yaml
-  seeds: [neutral, A, B]
+  seeds:
+  - neutral
+  - A
+  - B
 - name: dense
   implementation: controlled Mink baseline
   config: configs/controlled_mink.yaml
-  seeds: [neutral]
+  seeds:
+  - neutral
 - name: gmr
   repository: https://github.com/YanjieZe/GMR.git
   commit: bb1bbe40774794fceb2a7c579a3464a28e68c844
@@ -24,5 +28,6 @@ conditional_order:
 - protomotions_v3
 - phc
 conditional_per_method_limit_s: 7200
+conditional_total_limit_s: 14400
 full_lafan_authorized: false
 hard_stop_message: FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

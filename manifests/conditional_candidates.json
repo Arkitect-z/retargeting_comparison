@@ -1,0 +1,46 @@
+{
+  "full_lafan_authorized": false,
+  "generated_at_utc": "2026-07-22T16:43:56.173894+00:00",
+  "hard_stop_message": "FULL-LAFAN EXPERIMENTS NOT STARTED \u2014 WAITING FOR USER APPROVAL.",
+  "per_candidate_gate_limit_s": 7200.0,
+  "results": [
+    {
+      "candidate": "ProtoMotions v3",
+      "canonical_output_ready": false,
+      "elapsed_s": 0.005161071021575481,
+      "environment_ready": false,
+      "evidence": "official pyroki/batch_retarget_to_g1_from_keypoints.py | target_raw_frames_cli=True | native_adapter=source_adapters/protomotions_v3/dance1_subject1_f000000_000600/keypoints.npy | requires separate JAX/PyRoki environment per official workflow",
+      "expected_commit": "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c",
+      "full_sequence_run": false,
+      "g1_29dof_declared": true,
+      "gate_limit_s": 7200.0,
+      "input_ready": true,
+      "order": 1,
+      "outcome": "N/A \u2014 public human\u2192G1 pipeline not integration-ready under the Pilot budget",
+      "reason": "missing: frozen runnable environment; complete canonical 600-frame output",
+      "status": "na",
+      "upstream_commit": "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c"
+    },
+    {
+      "candidate": "PHC",
+      "canonical_output_ready": false,
+      "elapsed_s": 0.004322819993831217,
+      "environment_ready": false,
+      "evidence": "official docs/retargeting.md | official scripts/data_process/fit_smpl_shape.py | official scripts/data_process/fit_smpl_motion.py | native_adapter=source_adapters/phc/dance1_subject1_f000000_000600/motion.npz | requires AMASS/SMPL parameters plus pre-fitted robot shape; raw BVH is not a native input",
+      "expected_commit": "846988d433ce1f341e85ac6fbd2cd51911bb3341",
+      "full_sequence_run": false,
+      "g1_29dof_declared": true,
+      "gate_limit_s": 7200.0,
+      "input_ready": false,
+      "order": 2,
+      "outcome": "N/A \u2014 public human\u2192G1 pipeline not integration-ready under the Pilot budget",
+      "reason": "missing: same-source native adapter; frozen runnable environment; complete canonical 600-frame output",
+      "status": "na",
+      "upstream_commit": "846988d433ce1f341e85ac6fbd2cd51911bb3341"
+    }
+  ],
+  "rows_sha256": "c9f893ca2f1f7ffe166f954cb63d46749034c886b0c86653a1a58151315a6750",
+  "schema_version": 2,
+  "sequence_id": "dance1_subject1_f000000_000600",
+  "source_frames": 600
+}

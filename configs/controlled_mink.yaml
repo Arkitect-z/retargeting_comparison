@@ -3,15 +3,22 @@ upstream_reference:
   commit: bb1bbe40774794fceb2a7c579a3464a28e68c844
   config: general_motion_retargeting/ik_configs/bvh_lafan1_to_g1.json
 robot_xml: external/GMR/assets/unitree_g1/g1_mocap_29dof.xml
+benchmark_revision: controlled-v2-common-scale-temporal
 common:
   solver: daqp
   damping: 0.5
   lm_damping: 1.0
   max_improvement_iterations: 10
+  first_frame_minimum_iterations: 30
+  first_frame_maximum_iterations: 50
   improvement_tolerance: 0.001
-  position_scale_root_torso_legs: 0.875
-  position_scale_arms: 0.7291666666666666
+  # Frozen evaluator-v2 neutral-G1/source landmark calibration.  Both task
+  # groups deliberately use the same value; native public-method scales are
+  # reported separately rather than leaking into this controlled comparison.
+  position_scale_root_torso_legs: 0.7420370439847394
+  position_scale_arms: 0.7420370439847394
   posture_cost: 0.0001
+  temporal_smoothness_cost: 0.001
   root_position_cost: 100.0
   root_yaw_cost: 5.0
   sequential_warm_start: true

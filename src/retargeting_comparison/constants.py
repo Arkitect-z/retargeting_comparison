@@ -40,3 +40,14 @@ G1_JOINT_NAMES = (
 )
 
 RUN_STATUSES = ("pending", "running", "succeeded", "incomplete", "failed", "na")
+
+# Public outputs remain at their immutable v1 paths.  Controlled baselines were
+# rerun after the non-result-driven evaluator-v2 scale/temporal correction.
+STAGE1_RUN_DIRECTORIES = {
+    "sparse-neutral": "sparse-neutral-v2",
+    "sparse-a": "sparse-a-v2",
+    "sparse-b": "sparse-b-v2",
+    "dense": "dense-v2",
+    "gmr": "gmr",
+    "omniretarget": "omniretarget",
+}

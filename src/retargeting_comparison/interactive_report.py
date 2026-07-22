@@ -23,6 +23,7 @@ FRAME_FIELDS = (
     "ground_penetration_depth_m",
     "pose_jump_rms_m",
     "solve_time_s",
+    "artifact_causes",
 )
 
 
@@ -89,6 +90,12 @@ def _input_hashes(root: Path) -> list[dict[str, Any]]:
         root / "metrics" / "stage2_projection.json",
         root / "metrics" / "sparse_seed_divergence_per_frame.csv",
         root / "metrics" / "source_adapter_errors.csv",
+        root / "metrics" / "root_scale_diagnostics.csv",
+        root / "metrics" / "controlled_task_residuals.csv",
+        root / "metrics" / "conditional_candidates.csv",
+        root / "manifests" / "evaluator.yaml",
+        root / "manifests" / "source_adapters.yaml",
+        root / "manifests" / "conditional_candidates.json",
         root / "manifests" / "pilot_sequence.yaml",
         root / "manifests" / "dataset.yaml",
         root / "manifests" / "hardware.yaml",
@@ -135,9 +142,12 @@ def collect_interactive_data(repo_root: str | Path = ".") -> dict[str, Any]:
     repositories = _csv_rows(root / "manifests" / "repositories.csv")
     adapters = _csv_rows(root / "metrics" / "source_adapter_errors.csv")
     seed_summary = _csv_rows(root / "metrics" / "sparse_seed_divergence.csv")
+    scale_diagnostics = _csv_rows(root / "metrics" / "root_scale_diagnostics.csv")
+    controlled_residuals = _csv_rows(root / "metrics" / "controlled_task_residuals.csv")
+    conditional_candidates = _csv_rows(root / "metrics" / "conditional_candidates.csv")
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "title": "Human-to-G1 Retargeting — Stage 1 Pilot",
         "decision": _json(root / "manifests" / "stage1_validation.json")["decision"],
         "hard_stop_message": FULL_LAFAN_STOP_MESSAGE,
@@ -146,6 +156,10 @@ def collect_interactive_data(repo_root: str | Path = ".") -> dict[str, Any]:
         "frame_series": _frame_series(root),
         "seed_series": _seed_series(root),
         "seed_summary": seed_summary,
+        "scale_diagnostics": scale_diagnostics,
+        "controlled_residuals": controlled_residuals,
+        "conditional_candidates": conditional_candidates,
+        "evaluator": load_yaml(root / "manifests" / "evaluator.yaml"),
         "interaction": interaction,
         "timing_raw": timing_raw,
         "timing_summary": timing_summary,

@@ -11,8 +11,8 @@ import mink
 import mujoco
 import numpy as np
 
+from .calibration import human_heading_yaw
 from .io_utils import load_yaml, sha256_file
-from .rotations import quaternion_wxyz_to_matrix
 from .schemas import CanonicalG1, CanonicalHuman
 
 
@@ -89,6 +89,13 @@ class ControlledMinkRetargeter:
         )
         self.posture.set_target_from_configuration(self.configuration)
         self.tasks.append(self.posture)
+        self.temporal = mink.PostureTask(
+            self.model,
+            cost=float(common["temporal_smoothness_cost"]),
+            lm_damping=float(common["lm_damping"]),
+        )
+        self.temporal.set_target_from_configuration(self.configuration)
+        self.tasks.append(self.temporal)
         self.limits = [mink.ConfigurationLimit(self.model)]
         self.initialization_time_s = time.perf_counter() - initialization_start
 
@@ -102,11 +109,9 @@ class ControlledMinkRetargeter:
         return scaled_root + (human.world_positions[frame, joint_index] - root) * scale
 
     def _set_targets(self, human: CanonicalHuman, frame: int, indices: dict[str, int]) -> None:
-        root_rotation = quaternion_wxyz_to_matrix(human.world_rotations[frame, 0])
-        # Frozen GMR pelvis alignment quaternion [0.5, 0.5, 0.5, 0.5].
-        pelvis_offset = quaternion_wxyz_to_matrix(np.asarray([0.5, 0.5, 0.5, 0.5]))
-        aligned = root_rotation @ pelvis_offset
-        yaw = float(np.arctan2(aligned[1, 0], aligned[0, 0]))
+        # The evaluator-v2 heading is derived from source geometry, avoiding a
+        # BVH-root/G1-pelvis axis convention hidden inside an upstream method.
+        yaw = float(human_heading_yaw(human, np.asarray([frame]))[0])
         yaw_rotation = mink.SO3.from_z_radians(yaw)
         identity = mink.SO3.identity()
         for spec, task in self.frame_tasks:
@@ -131,33 +136,30 @@ class ControlledMinkRetargeter:
         dt = self.model.opt.timestep
         for frame in range(frames):
             frame_start = time.perf_counter()
+            # Freeze q[t-1] as a weak temporal target for all iterations of
+            # frame t.  Sequential warm start alone is not a smoothness cost.
+            self.temporal.set_target_from_configuration(self.configuration)
             self._set_targets(human, frame, indices)
             start = time.perf_counter()
-            current_error = float(
-                np.linalg.norm(
-                    np.concatenate([task.compute_error(self.configuration) for task in self.tasks])
+            maximum_iterations = (
+                int(common["first_frame_maximum_iterations"])
+                if frame == 0
+                else int(common["max_improvement_iterations"]) + 1
+            )
+            minimum_iterations = (
+                int(common["first_frame_minimum_iterations"])
+                if frame == 0
+                else 1
+            )
+            current_error = float("inf")
+            for iteration in range(maximum_iterations):
+                before = float(
+                    np.linalg.norm(
+                        np.concatenate(
+                            [task.compute_error(self.configuration) for task in self.tasks]
+                        )
+                    )
                 )
-            )
-            velocity = mink.solve_ik(
-                self.configuration,
-                self.tasks,
-                dt,
-                common["solver"],
-                float(common["damping"]),
-                self.limits,
-            )
-            self.configuration.integrate_inplace(velocity, dt)
-            next_error = float(
-                np.linalg.norm(
-                    np.concatenate([task.compute_error(self.configuration) for task in self.tasks])
-                )
-            )
-            iteration = 0
-            while (
-                current_error - next_error > float(common["improvement_tolerance"])
-                and iteration < int(common["max_improvement_iterations"])
-            ):
-                current_error = next_error
                 velocity = mink.solve_ik(
                     self.configuration,
                     self.tasks,
@@ -167,12 +169,17 @@ class ControlledMinkRetargeter:
                     self.limits,
                 )
                 self.configuration.integrate_inplace(velocity, dt)
-                next_error = float(
+                current_error = float(
                     np.linalg.norm(
                         np.concatenate([task.compute_error(self.configuration) for task in self.tasks])
                     )
                 )
-                iteration += 1
+                if (
+                    iteration + 1 >= minimum_iterations
+                    and before - current_error
+                    <= float(common["improvement_tolerance"])
+                ):
+                    break
             solve_times.append(time.perf_counter() - start)
             value = self.configuration.data.qpos.copy()
             if not np.isfinite(value).all():
@@ -193,11 +200,17 @@ class ControlledMinkRetargeter:
                 "method_family": "controlled_mink",
                 "variant": self.variant,
                 "seed": self.seed_name,
+                "benchmark_revision": self.config["benchmark_revision"],
                 "completion_status": completion,
                 "canonical_source_sha256": human.source_sha256,
                 "config_path": str(self.config_path.relative_to(self.repo_root)),
                 "config_sha256": sha256_file(self.config_path),
                 "sequential_warm_start": True,
+                "temporal_smoothness_cost": float(common["temporal_smoothness_cost"]),
+                "position_scale_root_torso_legs": float(
+                    common["position_scale_root_torso_legs"]
+                ),
+                "position_scale_arms": float(common["position_scale_arms"]),
                 "orientation_targets": ["root_yaw"],
                 "initialization_time_s": self.initialization_time_s,
                 "steady_end_to_end_total_s": float(sum(end_to_end_times)),

@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .constants import FULL_LAFAN_STOP_MESSAGE
+from .constants import FULL_LAFAN_STOP_MESSAGE, STAGE1_RUN_DIRECTORIES
+from .calibration import load_evaluator_protocol
 from .evaluator import HUMAN_SEMANTIC_JOINTS, evaluate_motion, save_evaluation
 from .io_utils import atomic_write_json, atomic_write_text, load_yaml, sha256_file
 from .robot_model import CanonicalRobotModel, default_robot_scene
@@ -48,7 +49,11 @@ def _sequence(root: Path) -> dict[str, Any]:
 def _run_paths(root: Path) -> dict[str, Path]:
     sequence_id = _sequence(root)["sequence_id"]
     return {
-        label: root / "runs" / sequence_id / label / "canonical_g1.npz"
+        label: root
+        / "runs"
+        / sequence_id
+        / STAGE1_RUN_DIRECTORIES[label]
+        / "canonical_g1.npz"
         for label in CORE_LABELS
     }
 
@@ -57,13 +62,16 @@ def evaluate_core(root: Path) -> pd.DataFrame:
     sequence = _sequence(root)
     human = CanonicalHuman.load(root / sequence["canonical_path"])
     robot = CanonicalRobotModel(default_robot_scene(root))
+    protocol_path = root / "manifests" / "evaluator.yaml"
+    protocol = load_evaluator_protocol(protocol_path)
+    protocol["manifest_sha256"] = sha256_file(protocol_path)
     rows = []
     for label, path in _run_paths(root).items():
         if not path.is_file():
             raise FileNotFoundError(f"Required core output is missing: {path}")
         motion = CanonicalG1.load(path)
         motion.validate(source_frame_count=len(human.timestamps))
-        table, summary = evaluate_motion(human, motion, robot)
+        table, summary = evaluate_motion(human, motion, robot, protocol)
         save_evaluation(table, summary, root / "metrics" / "runs", label)
         summary["label"] = label
         summary["output_sha256"] = sha256_file(path)
@@ -79,7 +87,7 @@ def collect_timing(root: Path, core: pd.DataFrame) -> tuple[pd.DataFrame, pd.Dat
     raw_rows = []
     summary_rows = []
     for label in CORE_LABELS:
-        run_dir = root / "runs" / sequence_id / label
+        run_dir = root / "runs" / sequence_id / STAGE1_RUN_DIRECTORIES[label]
         timing_path = run_dir / "timing_refined.json"
         if not timing_path.is_file():
             timing_path = run_dir / "timing.json"
@@ -167,7 +175,151 @@ def sparse_seed_divergence(root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     )
     per_frame.to_csv(root / "metrics" / "sparse_seed_divergence_per_frame.csv", index=False)
     summary.to_csv(root / "metrics" / "sparse_seed_divergence.csv", index=False)
+    semantics = [name for name in HUMAN_SEMANTIC_JOINTS if name != "root"]
+    targeted_indices = [semantics.index(name) for name in ("left_wrist", "right_wrist", "left_ankle", "right_ankle")]
+    untracked_indices = [index for index in range(len(semantics)) if index not in targeted_indices]
+    stacked_points = np.stack([root_frames[label] for label in motions])
+    point_variance = np.var(stacked_points, axis=0)
+    point_variance_norm = np.sum(point_variance, axis=2)
+    joint_angles = np.stack([motion.qpos[:, 7:] for motion in motions.values()])
+    circular_mean = np.arctan2(np.mean(np.sin(joint_angles), axis=0), np.mean(np.cos(joint_angles), axis=0))
+    circular_delta = np.arctan2(
+        np.sin(joint_angles - circular_mean[None]),
+        np.cos(joint_angles - circular_mean[None]),
+    )
+    qpos_variance = np.mean(circular_delta**2, axis=(0, 2))
+    variance = pd.DataFrame(
+        {
+            "frame": np.arange(stacked_points.shape[1]),
+            "targeted_point_variance_m2": np.mean(
+                point_variance_norm[:, targeted_indices], axis=1
+            ),
+            "untracked_point_variance_m2": np.mean(
+                point_variance_norm[:, untracked_indices], axis=1
+            ),
+            "all_point_variance_m2": np.mean(point_variance_norm, axis=1),
+            "qpos_circular_variance_rad2": qpos_variance,
+        }
+    )
+    variance.to_csv(root / "metrics" / "sparse_seed_variance_per_frame.csv", index=False)
+    maximum_index = int(variance.all_point_variance_m2.idxmax())
+    variance_summary = pd.DataFrame(
+        [
+            {
+                "targeted_point_variance_mean_m2": variance.targeted_point_variance_m2.mean(),
+                "untracked_point_variance_mean_m2": variance.untracked_point_variance_m2.mean(),
+                "all_point_variance_mean_m2": variance.all_point_variance_m2.mean(),
+                "qpos_circular_variance_mean_rad2": variance.qpos_circular_variance_rad2.mean(),
+                "maximum_divergence_frame": maximum_index,
+                "maximum_divergence_time_s": maximum_index / motions["sparse-neutral"].fps,
+                "maximum_all_point_variance_m2": variance.loc[
+                    maximum_index, "all_point_variance_m2"
+                ],
+            }
+        ]
+    )
+    variance_summary.to_csv(root / "metrics" / "sparse_seed_variance.csv", index=False)
     return per_frame, summary
+
+
+def scale_diagnostics(root: Path, core: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "label",
+        "common_static_scale",
+        "native_root_scale",
+        "effective_root_xy_scale",
+        "root_scale_bias_fraction",
+        "root_translation_common_scale_mean_m",
+        "root_translation_native_scale_mean_m",
+        "root_translation_scale_invariant_mean_m",
+    ]
+    frame = core[columns].copy()
+    frame["effective_minus_native_scale"] = (
+        frame.effective_root_xy_scale - frame.native_root_scale
+    )
+    frame.to_csv(root / "metrics" / "root_scale_diagnostics.csv", index=False)
+    frame.to_parquet(root / "metrics" / "root_scale_diagnostics.parquet", index=False)
+    return frame
+
+
+def controlled_task_residuals(root: Path) -> pd.DataFrame:
+    """Measure the actual Sparse/Dense v2 world-position objectives.
+
+    RF-KPE is a morphology-referenced fidelity metric.  It must not be
+    mislabeled as the residual minimized by the controlled optimizer, so the
+    latter is exported independently here.
+    """
+
+    sequence = _sequence(root)
+    human = CanonicalHuman.load(root / sequence["canonical_path"])
+    robot = CanonicalRobotModel(default_robot_scene(root))
+    config = load_yaml(root / "configs" / "controlled_mink.yaml")
+    indices = {name: index for index, name in enumerate(human.joint_names.astype(str))}
+    per_frame_rows: list[dict[str, Any]] = []
+    summary_rows: list[dict[str, Any]] = []
+    for label in ("sparse-neutral", "sparse-a", "sparse-b", "dense"):
+        variant = "dense" if label == "dense" else "sparse"
+        motion = CanonicalG1.load(_run_paths(root)[label])
+        robot_frames = [robot.semantic_positions(qpos) for qpos in motion.qpos]
+        task_errors: dict[str, np.ndarray] = {}
+        for spec in config["target_sets"][variant]:
+            root_position = human.world_positions[:, 0]
+            scale = float(config["common"][f"position_scale_{spec['scale_group']}"])
+            scaled_root = root_position * float(
+                config["common"]["position_scale_root_torso_legs"]
+            )
+            target = scaled_root + (
+                human.world_positions[:, indices[spec["human_joint"]]] - root_position
+            ) * scale
+            actual = np.stack([frame[spec["semantic"]] for frame in robot_frames])
+            task_errors[spec["semantic"]] = np.linalg.norm(actual - target, axis=1)
+        root_error = task_errors["root"]
+        ee_error = np.mean(
+            np.stack([task_errors[name] for name in ("left_wrist", "right_wrist", "left_ankle", "right_ankle")]),
+            axis=0,
+        )
+        all_error = np.mean(np.stack(list(task_errors.values())), axis=0)
+        added_names = [name for name in task_errors if name not in {"root", "left_wrist", "right_wrist", "left_ankle", "right_ankle"}]
+        added_error = (
+            np.mean(np.stack([task_errors[name] for name in added_names]), axis=0)
+            if added_names
+            else np.zeros(len(motion.qpos))
+        )
+        for frame in range(len(motion.qpos)):
+            row: dict[str, Any] = {
+                "label": label,
+                "frame": frame,
+                "root_position_residual_m": root_error[frame],
+                "four_ee_position_residual_m": ee_error[frame],
+                "dense_added_position_residual_m": added_error[frame],
+                "all_declared_position_residual_m": all_error[frame],
+            }
+            row.update(
+                {
+                    f"{semantic}_position_residual_m": values[frame]
+                    for semantic, values in task_errors.items()
+                }
+            )
+            per_frame_rows.append(row)
+        summary_rows.append(
+            {
+                "label": label,
+                "root_position_residual_mean_m": root_error.mean(),
+                "root_position_residual_p95_m": np.percentile(root_error, 95),
+                "four_ee_position_residual_mean_m": ee_error.mean(),
+                "four_ee_position_residual_p95_m": np.percentile(ee_error, 95),
+                "dense_added_position_residual_mean_m": added_error.mean(),
+                "all_declared_position_residual_mean_m": all_error.mean(),
+            }
+        )
+    per_frame = pd.DataFrame(per_frame_rows)
+    summary = pd.DataFrame(summary_rows)
+    per_frame.to_csv(root / "metrics" / "controlled_task_residuals_per_frame.csv", index=False)
+    per_frame.to_parquet(
+        root / "metrics" / "controlled_task_residuals_per_frame.parquet", index=False
+    )
+    summary.to_csv(root / "metrics" / "controlled_task_residuals.csv", index=False)
+    return summary
 
 
 def collect_interaction(root: Path) -> pd.DataFrame:
@@ -305,6 +457,7 @@ def build_figures(
     core_timing: pd.DataFrame,
     seed_summary: pd.DataFrame,
     interaction: pd.DataFrame,
+    scales: pd.DataFrame,
 ) -> None:
     points = core_timing[core_timing.label.isin(OPERATING_POINTS)].copy()
 
@@ -353,6 +506,91 @@ def build_figures(
         axis.grid(axis="y", alpha=0.25)
 
     _save_plot(root, "sparse_seed_divergence", seed_summary, seed_bar)
+
+    def scale_bar(axis, data):
+        x = np.arange(len(data))
+        width = 0.35
+        axis.bar(x - width / 2, data.native_root_scale, width, label="Declared native")
+        axis.bar(x + width / 2, data.effective_root_xy_scale, width, label="Measured output")
+        axis.axhline(
+            float(data.common_static_scale.iloc[0]),
+            color="black",
+            linestyle="--",
+            linewidth=1.2,
+            label="Common benchmark",
+        )
+        axis.set_xticks(x, data.label)
+        axis.set_ylabel("Root translation scale")
+        axis.legend()
+        axis.grid(axis="y", alpha=0.25)
+
+    _save_plot(root, "root_scale_policies", scales, scale_bar)
+
+    root_errors = scales[
+        [
+            "label",
+            "root_translation_common_scale_mean_m",
+            "root_translation_native_scale_mean_m",
+            "root_translation_scale_invariant_mean_m",
+        ]
+    ]
+
+    def root_error_bar(axis, data):
+        x = np.arange(len(data))
+        width = 0.24
+        axis.bar(
+            x - width,
+            data.root_translation_common_scale_mean_m,
+            width,
+            label="Common-scale",
+        )
+        axis.bar(
+            x,
+            data.root_translation_native_scale_mean_m,
+            width,
+            label="Native-target",
+        )
+        axis.bar(
+            x + width,
+            data.root_translation_scale_invariant_mean_m,
+            width,
+            label="Scale-invariant shape",
+        )
+        axis.set_xticks(x, data.label)
+        axis.set_ylabel("Mean root trajectory error (m)")
+        axis.legend()
+        axis.grid(axis="y", alpha=0.25)
+
+    _save_plot(root, "root_error_decomposition", root_errors, root_error_bar)
+
+    artifact_components = points[
+        [
+            "label",
+            "foot_skating_frame_rate",
+            "ground_penetration_frame_rate",
+            "joint_limit_violation_frame_rate",
+            "invalid_frame_rate",
+        ]
+    ]
+
+    def artifact_bar(axis, data):
+        x = np.arange(len(data))
+        bottom = np.zeros(len(data))
+        for column, label in (
+            ("foot_skating_frame_rate", "foot skating"),
+            ("ground_penetration_frame_rate", "ground penetration"),
+            ("joint_limit_violation_frame_rate", "joint limit"),
+            ("invalid_frame_rate", "invalid"),
+        ):
+            values = data[column].to_numpy()
+            axis.bar(x, values, bottom=bottom, label=label)
+            bottom += values
+        axis.set_xticks(x, data.label)
+        axis.set_ylabel("Component frame rates (stacked, overlaps possible)")
+        axis.legend()
+        axis.grid(axis="y", alpha=0.25)
+
+    _save_plot(root, "artifact_components", artifact_components, artifact_bar)
     interaction_source = interaction[
         [
             "case",
@@ -398,21 +636,86 @@ def build_markdown(
     best_quality = operating.rf_kpe_all_mean_m.idxmin()
     fastest = operating.end_to_end_rtf_median.idxmin()
     projection_info = json.loads((root / "metrics" / "stage2_projection.json").read_text())
+    evaluator = load_evaluator_protocol(root / "manifests" / "evaluator.yaml")
+    scales = pd.read_csv(root / "metrics" / "root_scale_diagnostics.csv").set_index("label")
+    residuals = pd.read_csv(root / "metrics" / "controlled_task_residuals.csv")
+    candidates = pd.read_csv(root / "metrics" / "conditional_candidates.csv")
+    adapters = pd.read_csv(root / "metrics" / "source_adapter_errors.csv")
+    seed_variance = pd.read_csv(root / "metrics" / "sparse_seed_variance.csv")
     outcome = (
         "GO"
         if projection_info["within_wall_budget"] and projection_info["within_storage_budget"]
         else "GO WITH CHANGES"
     )
-    table = operating[
+    quality_table = operating[
         [
             "rf_kpe_all_mean_m",
             "rf_kpe_targeted_mean_m",
             "rf_kpe_untracked_mean_m",
+            "root_translation_common_scale_mean_m",
+            "root_yaw_mean_rad",
             "artifact_rate",
-            "end_to_end_rtf_median",
-            "native_core_rtf_median",
         ]
     ].to_markdown(floatfmt=".4f")
+    timing_table = operating[
+        [
+            "end_to_end_rtf_median",
+            "native_core_rtf_median",
+            "end_to_end_rtf_cv",
+        ]
+    ].to_markdown(floatfmt=".4f")
+    scale_table = scales[
+        [
+            "common_static_scale",
+            "native_root_scale",
+            "effective_root_xy_scale",
+            "root_translation_common_scale_mean_m",
+            "root_translation_native_scale_mean_m",
+            "root_translation_scale_invariant_mean_m",
+        ]
+    ].to_markdown(floatfmt=".4f")
+    artifact_table = operating[
+        [
+            "foot_skating_frame_rate",
+            "ground_penetration_frame_rate",
+            "joint_limit_violation_frame_rate",
+            "invalid_frame_rate",
+            "artifact_rate",
+        ]
+    ].to_markdown(floatfmt=".4f")
+    temporal_table = operating[
+        [
+            "joint_velocity_rms_mean_rad_s",
+            "joint_acceleration_rms_mean_rad_s2",
+            "joint_jerk_rms_p95_rad_s3",
+            "pose_jump_p95_m",
+        ]
+    ].to_markdown(floatfmt=".4f")
+    residual_table = residuals.to_markdown(index=False, floatfmt=".5f")
+    candidate_table = candidates[
+        [
+            "candidate",
+            "status",
+            "input_ready",
+            "environment_ready",
+            "canonical_output_ready",
+            "elapsed_s",
+            "outcome",
+            "reason",
+        ]
+    ].to_markdown(index=False, floatfmt=".2f")
+    adapter_table = adapters[
+        [
+            "method",
+            "common_joints",
+            "root_aligned_mpjpe_m",
+            "bone_length_error_mean_m",
+            "root_translation_error_mean_m",
+            "yaw_error_mean_rad",
+            "foot_contact_agreement",
+            "status",
+        ]
+    ].to_markdown(index=False, floatfmt=".6f")
     interaction_table = interaction[
         [
             "case",
@@ -442,23 +745,75 @@ def build_markdown(
         root / "PILOT_REPORT.md",
         f"""# Human-to-G1 Retargeting Pilot Report
 
-## Scope and frozen design
+## Abstract
 
-This Stage 1 experiment compares controlled Sparse and Dense Mink baselines, official GMR, and official OmniRetarget/Holosoma on the preselected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The sequence, thresholds, method commits, evaluator model, and timing order were frozen before formal runs. Full-LAFAN was not started.
+This Stage 1 Pilot compares controlled Sparse and Dense Mink retargeting, official GMR, and official OmniRetarget/Holosoma on the source-only-selected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The original presentation made several methods look nearly identical because it mixed method-specific root scales with a method-dependent evaluator scale and used root-frame plots that intentionally remove global translation. Evaluator v2 fixes that confound without changing the sequence, methods, or thresholds: one neutral-G1/source landmark scale is frozen for all quality metrics, native scale policy and scale-invariant path shape are reported separately, and the controlled baselines are rerun with that common scale and an explicit weak temporal cost.
+
+## Frozen design and scope
+
+Stage 1 contains exactly one LAFAN Pilot, three Sparse seeds, four core operating points, and the two official box/climb interaction cases in Full and No-Hard form. It is not a Full-LAFAN ranking. The official public methods retain their native scaling policies; they are not silently rescaled or retuned. The evaluator uses the Holosoma G1 29-DoF model only as common robot geometry and joint order.
 
 ## Main results
 
-{table}
+{quality_table}
 
-`{best_quality}` has the lowest RF-KPE-all at this single operating point; `{fastest}` is fastest by median end-to-end RTF. These are Pilot observations, not dataset-level rankings. Adapter error is reported separately in `metrics/source_adapter_errors.csv`.
+`{best_quality}` has the lowest RF-KPE-all and `{fastest}` has the lowest median end-to-end RTF at this one operating point. Neither observation is a dataset-level ranking. The visual similarity is expected: every output is the same G1 morphology, all methods track overlapping major body landmarks, and RF-KPE removes root position and heading before comparing pose. Differences are most visible in the disaggregated root-scale, task-residual, temporal, artifact, and seed-sensitivity evidence below.
 
-## Interpretation
+## Scale audit: why root translation looked inconsistent
 
-The targeted and untracked columns are intentionally separate: a method can match hands/feet while degrading torso or limb structure. Temporal and artifact fields remain disaggregated in `metrics/runs/*_summary.json` and per-frame CSV/Parquet files. No composite score is used.
+The common benchmark scale is `{float(evaluator['scale']['common_static_scale']):.9f}`, obtained once from neutral G1 `head→mean(toes)` divided by source frame-0 `Head→mean(toes)`. It is not inferred from any method output.
+
+{scale_table}
+
+Three quantities answer three different questions:
+
+- **Common-scale error** asks whether the output follows the morphology-referenced benchmark trajectory.
+- **Native-scale error** asks whether the public solver follows the trajectory implied by its own declared policy.
+- **Scale-invariant error** fits one scalar to the root XY path and asks only whether path shape is preserved.
+
+GMR's declared root/leg policy is `0.9 × 1.75 / 1.8 = 0.875`; Holosoma's LAFAN default is `1.27 / 1.7 = 0.7470588`. The old evaluator also estimated robot height from each method's first output pose, which made the reference itself method-dependent. These are the reasons identical source and target robot did not produce identical root scales. A large common-scale error together with a small native or scale-invariant error is scale-policy mismatch, not necessarily solver tracking failure.
+
+![Declared, measured, and common root scales](figures/root_scale_policies.svg)
+
+![Root error decomposition](figures/root_error_decomposition.svg)
+
+## RF-KPE: what it measures and why values cluster
+
+RF-KPE is **root-frame keypoint position error**. Human semantic joints are scaled with the one common scale, translated relative to the human root, and rotated into the geometry-derived human heading; G1 semantic points are treated the same way using the robot root. It therefore evaluates relative whole-body pose while deliberately excluding root translation and root yaw. `targeted` covers wrists and ankles; `untracked` covers the remaining semantic body joints. Similar RF-KPE values do not imply identical trajectories: common robot morphology imposes a shared error floor, and the metric cannot expose the scale differences that were removed by root alignment. Root translation/yaw, declared task residuals, and artifacts must be read beside it.
+
+## Sparse versus Dense design
+
+For the neutral-seed operating-point comparison, Sparse and Dense share the same G1 model, common uniform scale, DAQP solver, damping, joint limits, iteration budget, first-frame convergence budget, posture cost, weak `q[t-1]` temporal cost, root weights, and sequential warm start. Only the declared task set differs. Sparse tracks root translation/yaw plus left/right wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. No hand/foot orientation, contact prior, learned prior, or independent-frame variant enters the main comparison.
+
+{residual_table}
+
+These are the actual world-position residuals minimized by the controlled solver. They are reported separately from RF-KPE, which is an evaluator-side morphology metric.
+
+## Temporal and artifact evidence
+
+{temporal_table}
+
+{artifact_table}
+
+`artifact` is an aggregate per-frame flag, not a method label or a statement that the whole motion is invalid. A frame is flagged only for one or more named causes: source-stance foot skating over `0.01 m/s`, ground penetration over `0.01 m`, joint-limit violation, or invalid numeric output. The rebuilt Rerun overlay shows these exact causes (`SKATING-L/R`, `PENETRATION`, `JOINT-LIMIT`, `INVALID`) instead of the ambiguous word “Artifact.” Component rates can overlap and are not summed into a score.
+
+![Artifact causes](figures/artifact_components.svg)
+
+## Sparse null-space sensitivity
+
+{seeds.to_markdown(index=False, floatfmt='.5f')}
+
+Mean targeted point variance is `{float(seed_variance.targeted_point_variance_mean_m2.iloc[0]):.6g} m²`; mean untracked point variance is `{float(seed_variance.untracked_point_variance_mean_m2.iloc[0]):.6g} m²`. Three deterministic first-frame seeds do not sample the entire null space, but they directly test whether similar sparse task satisfaction hides different full-body solutions.
+
+## Native source adapter audit
+
+{adapter_table}
+
+Adapter errors are not attributed to the retargeter. The GMR row is produced by its official LAFAN loader. The Holosoma row checks the explicit right-first reorder and exact Z-up/Y-up involution. Native adapter files remain ignored licensed/generated artifacts; hashes are frozen in `manifests/source_adapters.yaml`.
 
 ## Synchronized visual inspection
 
-The rebuildable Rerun recording synchronizes the source human, full articulated G1 visual meshes for all four operating points, and full G1 meshes for Sparse seeds A/B. Separate side-by-side world, overlaid world, root-frame, and Sparse-seed views expose root tracking, ground penetration, foot skating, and hidden-pose divergence. The viewer replays canonical outputs and is excluded from formal method timing; see `docs/RERUN_VISUALIZATION.md` and `manifests/rerun_visualization.json`.
+The Rerun recording synchronizes the source human with articulated G1 meshes for all core operating points and Sparse seeds A/B. World, overlay, root-frame, and seed views deliberately answer different questions. The viewer replays canonical outputs and is excluded from timing; see `docs/RERUN_VISUALIZATION.md` and `manifests/rerun_visualization.json`.
 
 ## Interaction case study
 
@@ -468,51 +823,63 @@ Distances are computed with MuJoCo geometry-surface queries over the actual coll
 
 ## Timing protocol
 
-Each core run used a fresh cold process, one warm-up, and three measured warm repetitions with one CPU thread and no visualization. Raw end-to-end and native-core values are in `metrics/timing_raw.csv`; cold/import/initialization overhead remains separate.
+{timing_table}
+
+Each core run uses one fresh cold process, one warm-up, and three measured warm repetitions with one CPU thread and no visualization. End-to-end and native-core values remain separate; initialization/JIT/import costs are excluded from steady-state RTF and retained in the raw records.
+
+## Conditional candidate gates
+
+{candidate_table}
+
+An `N/A` point is not a negative quality result. It means the public pipeline did not pass the same-source input, frozen environment, canonical 29-DoF output, and full-600-frame gates inside the bounded integration budget. No pre-retargeted sample or naked IK demo is substituted.
 
 ## Stage 2 gate
 
 {projection_table}
 
-The runtime estimate combines steady RTF with measured cold-import and initialization/adapter overhead once for each of the 77 source sequences; the observed formal-run retry rate was zero. After the required 1.5× safety factor, the serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB. The runtime projection therefore {'fits' if projection_info['within_wall_budget'] else 'does not fit'} the 48-hour gate. Stage 2 requires a new design discussion and explicit approval.
+After the required 1.5× safety factor, the serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB. It {'fits' if projection_info['within_wall_budget'] else 'does not fit'} the 48-hour runtime gate and {'fits' if projection_info['within_storage_budget'] else 'does not fit'} the 200 GB storage gate. Stage 2 remains stopped pending a separate design decision and explicit approval.
 """,
     )
     _write_report(
         root / "EXECUTIVE_SUMMARY.md",
         f"""# Executive Summary
 
-Stage 1 completed the four required operating points, synchronized Rerun visual inspection, and both Full/No-Hard interaction ablations on the frozen Pilot. The fastest observed operating point was `{fastest}` and the lowest RF-KPE-all was `{best_quality}`; neither observation is a Full-LAFAN conclusion.
+Stage 1 completes the four required operating points, three Sparse seeds, evaluator-v2 scale correction, source-adapter audit, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. The fastest observed operating point is `{fastest}` and the lowest RF-KPE-all is `{best_quality}` on this one Pilot only.
 
-Decision: **{outcome}**. The Stage 1 harness and evidence are usable, but the 1.5× serial Stage 2 runtime projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours, above the 48-hour limit. Storage remains within 200 GB. Before Stage 2, use repeat timing only on a frozen subset and either optimize/parallelize OmniRetarget or define and rename a deterministic reduced-LAFAN experiment.
+The apparent lack of visual separation was primarily a measurement-presentation issue: all outputs share G1 morphology, root-frame pose plots remove global trajectory, and the old root reference used inconsistent scales. The corrected report separates common-scale fidelity, native solver tracking, and scale-invariant path shape, and decomposes artifacts by cause.
+
+Decision: **{outcome}**. The 1.5× serial Stage 2 runtime projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours versus the 48-hour limit; projected storage is {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB versus 200 GB. Stage 2 was not started.
 """,
     )
     _write_report(
         root / "GO_NO_GO.md",
         f"""# Stage 1 Decision: {outcome}
 
-All four core methods completed 600/600 frames, synchronized source/output visualization and expanded evaluator/adapter tests passed, and both interaction cases completed in Full and No-Hard form. Raw timing has the required cold/warm structure. Conditional candidates were not started because the four core points directly answer the Pilot question and candidate integration would not change the Stage 2 runtime bottleneck.
+All four core methods complete 600/600 frames under the corrected protocol; evaluator and adapter checks pass; raw timing has one cold, one warm-up, and three measured repetitions; and both interaction cases complete in Full and No-Hard form. Conditional systems remain plotted only if their bounded gates pass; an N/A gate outcome is retained as evidence rather than replaced by pre-retargeted data.
 
-The change required before approval is budget-related: projected serial Full-LAFAN runtime with the frozen 1.5× factor is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours. Proposed order: keep non-core candidates excluded, repeat timing on a frozen subset only, discard rebuildable intermediates, test optimized or sequence-parallel OmniRetarget execution, then use a deterministically selected and explicitly renamed reduced-LAFAN set if the runtime still exceeds 48 hours.
+The change required before Stage 2 approval is budget-related: projected serial Full-LAFAN runtime with the frozen 1.5× factor is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours. Proposed order: drop failed/high-adapter-risk candidates, repeat timing only on a frozen subset, discard rebuildable intermediates, test sequence-parallel execution, and only then define an explicitly renamed deterministic reduced-LAFAN set if needed.
 """,
     )
     _write_report(
         root / "METHOD_SCOPE.md",
         """# Method Scope
 
-The experimental retargeters are controlled Sparse Mink, controlled Dense Mink, official GMR at the frozen commit, and official OmniRetarget/Holosoma at commit `5f48635a3624656a5f46a07df26d43187e59f855`. Sparse and Dense share solver, limits, scaling, warm start, iteration budget, damping, posture regularization, and initialization; only their declared target sets differ.
+The experimental core is controlled Sparse Mink, controlled Dense Mink, official GMR at `bb1bbe40774794fceb2a7c579a3464a28e68c844`, and official OmniRetarget/Holosoma at `5f48635a3624656a5f46a07df26d43187e59f855`. Sparse and Dense v2 share robot, uniform scale, solver, limits, warm start, iteration budget, damping, posture regularization, explicit weak temporal cost, and neutral initialization; only their declared target sets differ in the main operating-point comparison.
 
-ProtoMotions v3 and PHC remain conditional candidates and were not used as plotted points. SOMA Retargeter and cuRoboV2 are lineage/input-compatibility evidence only. Mink/PyRoki are optimization backends; MaskedMimic/BeyondMimic are controllers or trackers; LocoMuJoCo is a benchmark; MIRROR is not a G1 point here. Historical and experimental claims remain separated in `research/claims.csv`.
+ProtoMotions v3 and PHC are conditional candidates subject to the two-hour gate recorded in `metrics/conditional_candidates.csv`. SOMA Retargeter and cuRoboV2 remain lineage/input-compatibility evidence. Mink/PyRoki are backends; MaskedMimic/BeyondMimic are controllers or trackers; LocoMuJoCo is a benchmark; MIRROR is non-G1. Historical, scope, and experimental claims are separated in `research/claims.csv`.
 """,
     )
     _write_report(
         root / "SPARSE_IK_ANALYSIS.md",
         f"""# Sparse IK Analysis
 
-Sparse tracks root translation/yaw, both wrists, and both ankles. It uses neutral and two deterministic perturbed initial postures, followed by sequential warm start. No torso, elbow, knee, contact, or learned prior is present.
+Sparse tracks root translation/yaw plus both wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. Both use the common scale `{float(evaluator['scale']['common_static_scale']):.9f}`, joint limits, sequential warm start, weak fixed-posture regularization, and the same explicit weak `q[t-1]` temporal cost. Sparse contains no torso/elbow/knee task, contact objective, or learned prior.
 
 {seeds.to_markdown(index=False, floatfmt='.5f')}
 
-The pairwise table quantifies hidden-state sensitivity in joint space and in root-frame robot point space. Main comparisons use the neutral seed; A/B are diagnostics and are not silently averaged into the operating point.
+{residual_table}
+
+The pairwise table quantifies hidden-state sensitivity in joint space and root-frame robot point space. Main comparisons use neutral; A/B are diagnostics and are never averaged into the operating point. Target residual and untracked-pose divergence are separate claims.
 """,
     )
     _write_report(
@@ -530,12 +897,12 @@ The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from 
         root / "REPRODUCE_PILOT.md",
         """# Reproduce the Pilot
 
-1. Follow `docs/UPSTREAM_SETUP.md`, verify checkout commits, and place licensed assets outside Git as recorded in `manifests/`.
-2. Run `rtcmp audit`, `rtcmp prepare-source`, and `rtcmp validate-models`.
-3. Run core methods in `manifests/experiment_order.yaml`; Sparse uses neutral, A, and B.
-4. Run `rtcmp run-interaction --case box --variant full`, repeat with `no-hard`, then repeat both variants for `climb`.
-5. In conda env `vis`, run `rtcmp visualize-results` to build the complete synchronized Rerun recording and provenance manifest.
-6. Run `rtcmp build-report` (which also rebuilds `INTERACTIVE_REPORT.html`) and `rtcmp validate-stage1`.
+1. Follow `docs/UPSTREAM_SETUP.md`, verify frozen commits, and place licensed assets outside Git as recorded in `manifests/`.
+2. Run `rtcmp audit`, `rtcmp prepare-source`, `rtcmp validate-models`, and `rtcmp freeze-evaluator` before any formal method.
+3. In the `robot` environment run `rtcmp audit-source-adapters`; then run `rtcmp gate-candidates`.
+4. Run `rtcmp run-method --method sparse --seed neutral --revision v2 --sequence manifests/pilot_sequence.yaml`; repeat with seeds A/B and run Dense with `--revision v2`. Run GMR and OmniRetarget at their frozen revisions.
+5. Run both variants of `rtcmp run-interaction` for box and climb.
+6. In conda env `vis`, run `rtcmp visualize-results`; then run `rtcmp build-report` and `rtcmp validate-stage1`.
 
 Every run has an atomic status manifest and immutable output hash. Existing successful output is reused; a failed retry receives a new attempt directory. Raw datasets, body models, upstream history, trajectories, logs, and caches remain ignored.
 """,
@@ -556,41 +923,49 @@ One source-only selected LAFAN1 window: 600 frames, 19.9998 seconds, selected be
 
 ## 4. Controlled baselines
 
-Sparse and Dense share every solver setting. Only the task set changes; Sparse also exposes three deterministic initial postures.
+Sparse and Dense v2 share robot, scale, solver, limits, initialization, posture and temporal costs. Only the task set changes; Sparse additionally exposes three deterministic diagnostic seeds.
 
-## 5. Public methods
+## 5. Scale was a confound
+
+![Root scale policies](figures/root_scale_policies.svg)
+
+GMR uses `0.875`; Holosoma uses `0.7471`; evaluator v2 freezes one neutral-geometry scale for every method and reports native tracking separately.
+
+## 6. Public methods
 
 GMR and OmniRetarget run at frozen official commits in isolated subprocess environments with only I/O, provenance, and timing adapters.
 
-## 6. Quality vs speed
+## 7. RF-KPE and quality vs speed
 
 ![RTF versus RF-KPE](figures/rtf_vs_rf_kpe_all.svg)
 
-## 7. Targeted vs untracked
+RF-KPE is root-frame semantic pose error; it intentionally excludes root translation and heading.
+
+## 8. Targeted vs untracked
 
 ![Targeted versus untracked](figures/targeted_vs_untracked.svg)
 
-## 8. Artifacts
+## 9. Artifacts are cause-specific
 
-![RTF versus artifacts](figures/rtf_vs_artifact_rate.svg)
+![Artifact components](figures/artifact_components.svg)
 
-## 9. Sparse sensitivity
+## 10. Sparse sensitivity
 
 ![Sparse seed divergence](figures/sparse_seed_divergence.svg)
 
-## 10. Interaction ablation
+## 11. Interaction ablation
 
 ![Full versus No-Hard](figures/interaction_full_vs_no_hard.svg)
 
-## 11. Evidence limits
+## 12. Evidence limits
 
 This is one LAFAN operating point and two interaction cases. No dataset-level ranking or controller claim is made.
 
-## 12. Synchronized visual evidence
+## 13. Synchronized G1 evidence
 
 The Rerun recording provides full articulated G1 meshes in side-by-side world, world overlay, root-frame pose, and Sparse seed views, together with foot-state and per-frame metrics for every canonical output.
 
-## 13. Stage 2 budget
+## 14. Stage 2 budget
 
 The 1.5× serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB. Discuss reduced-LAFAN or optimized/parallel execution before approval.
 """
@@ -655,11 +1030,13 @@ def build_report(repo_root: str | Path = ".") -> None:
     (root / "metrics").mkdir(exist_ok=True)
     (root / "figures").mkdir(exist_ok=True)
     core = evaluate_core(root)
+    scales = scale_diagnostics(root, core)
+    controlled_task_residuals(root)
     _, timing = collect_timing(root, core)
     _, seed_summary = sparse_seed_divergence(root)
     interaction = collect_interaction(root)
     projection = stage2_projection(root, timing)
-    build_figures(root, timing, seed_summary, interaction)
+    build_figures(root, timing, seed_summary, interaction, scales)
     build_markdown(root, core, timing, seed_summary, interaction, projection)
     publish_manifests(root)
     from .interactive_report import build_interactive_report

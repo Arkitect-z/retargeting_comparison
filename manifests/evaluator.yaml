@@ -1,0 +1,54 @@
+schema_version: 2
+name: stage1-pilot-evaluator-v2
+source_sha256: 67e62e7e6e02cd54c8659fd1de9974032639e82948ebb86e2a8c82a060b7c6b5
+source_path: source/canonical_human/dance1_subject1_f000000_000600.npz
+robot_xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml
+robot_xml_sha256: 0555862e648ad9b4a1e4e773fa888a7ea6e3795c79b1ebfd7e36c3976615bb24
+heading:
+  definition: z_up_cross_mean_left_to_right_hips_shoulders
+  uses_bvh_root_quaternion: false
+  robot_definition: canonical_qpos_root_x_axis_yaw
+scale:
+  definition: neutral_g1_head_to_mean_toe_over_source_frame0_head_to_mean_toe
+  method_independent: true
+  source_frame: 0
+  source_landmark_height_m: 1.6008235258444419
+  neutral_robot_landmark_height_m: 1.1878703570588376
+  common_static_scale: 0.7420370439847394
+  source_landmarks:
+  - Head
+  - mean(LeftToe,RightToe)
+  robot_landmarks:
+  - head
+  - mean(left_toe,right_toe)
+native_root_scales:
+  sparse-neutral:
+    value: 0.7420370439847394
+    policy: controlled-v2 common benchmark scale
+  sparse-a:
+    value: 0.7420370439847394
+    policy: controlled-v2 common benchmark scale
+  sparse-b:
+    value: 0.7420370439847394
+    policy: controlled-v2 common benchmark scale
+  dense:
+    value: 0.7420370439847394
+    policy: controlled-v2 common benchmark scale
+  gmr:
+    value: 0.875
+    policy: official GMR Hips scale 0.9 times hard-coded LAFAN height 1.75 / assumption
+      1.8
+  omniretarget:
+    value: 0.7470588235294118
+    policy: official Holosoma LAFAN default_scale_factor
+thresholds:
+  foot_skating_speed_m_s: 0.01
+  ground_penetration_m: 0.01
+  joint_limit_tolerance_rad: 0.0001
+  minimum_completion_ratio: 0.95
+reporting:
+  common_scale_error: primary morphology-referenced root metric
+  native_scale_error: solver tracking at each public pipeline's declared scale
+  scale_invariant_error: root path shape after one sequence-level scalar fit
+  native_scale_is_not_used_for_rf_kpe: true
+full_lafan_authorized: false

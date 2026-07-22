@@ -120,7 +120,7 @@
       <div class="section-heading inverse reveal">
         <p class="section-index">02 · QUALITY × SPEED</p>
         <h2>The frontier is not<br>a finish line.</h2>
-        <p>Choose the error lens. Every point remains a separate operating point; lower and further left is better. Circle area encodes artifact rate.</p>
+        <p>Choose a pose or root-trajectory lens. Every point remains a separate operating point; lower and further left is better. Circle area encodes aggregate artifact rate.</p>
       </div>
       <div class="chart-shell dark-shell reveal">
         <div class="chart-toolbar">
@@ -128,11 +128,15 @@
             <button type="button" data-value="rf_kpe_all_mean_m" class="active">All body</button>
             <button type="button" data-value="rf_kpe_targeted_mean_m">Hands + feet</button>
             <button type="button" data-value="rf_kpe_untracked_mean_m">Untracked body</button>
+            <button type="button" data-value="root_translation_common_scale_mean_m">Root · common scale</button>
+            <button type="button" data-value="root_translation_native_scale_mean_m">Root · native scale</button>
+            <button type="button" data-value="root_translation_scale_invariant_mean_m">Root · path shape</button>
           </div>
           <div class="chart-key"><span class="size-key"></span> Area = artifact rate</div>
         </div>
         <div class="chart-stage tall"><svg id="frontier-chart" role="img" aria-label="Interactive quality versus speed scatter plot"></svg><div class="tooltip" id="frontier-tooltip" role="status"></div></div>
         <div class="chart-annotation" id="frontier-annotation" aria-live="polite"></div>
+        <p class="metric-footnote">RF-KPE removes root translation and heading. “Common scale” uses one neutral-G1/source calibration for all methods; “native scale” evaluates each public method against its declared policy; “path shape” fits one scalar and isolates trajectory geometry.</p>
       </div>
       <div class="finding-grid" id="frontier-findings"></div>
     </section>

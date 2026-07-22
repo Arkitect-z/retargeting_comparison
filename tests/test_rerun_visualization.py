@@ -12,6 +12,7 @@ from retargeting_comparison.rerun_visualization import (
     root_frame_points,
     visual_instance_poses,
 )
+from retargeting_comparison.constants import STAGE1_RUN_DIRECTORIES
 from retargeting_comparison.robot_model import CanonicalRobotModel, default_robot_scene
 
 
@@ -90,7 +91,10 @@ def test_local_stage1_visualization_contract_when_artifacts_exist() -> None:
     sequence_id = "dance1_subject1_f000000_000600"
     paths = [Path("source/canonical_human") / f"{sequence_id}.npz"]
     paths.extend(
-        Path("runs") / sequence_id / style.key / "canonical_g1.npz"
+        Path("runs")
+        / sequence_id
+        / STAGE1_RUN_DIRECTORIES[style.key]
+        / "canonical_g1.npz"
         for style in METHOD_STYLES
     )
     if not all(path.is_file() for path in paths):

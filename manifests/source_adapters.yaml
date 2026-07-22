@@ -1,0 +1,25 @@
+schema_version: 2
+sequence_id: dance1_subject1_f000000_000600
+canonical_source_sha256: 67e62e7e6e02cd54c8659fd1de9974032639e82948ebb86e2a8c82a060b7c6b5
+metrics_path: metrics/source_adapter_errors.csv
+metrics_sha256: 72cb47a29c91e273be8eab915cf03aa3586e69e184a500e4e152ca5df48662e5
+candidate_metrics_path: metrics/candidate_source_adapter_errors.csv
+candidate_metrics_sha256: e3ce861e635e2b4c9d7d745a36f8d2b83bde8d452a50c64a0ec229d3ebffa852
+native_artifacts_committed_to_git: false
+native_artifacts:
+  gmr:
+    path: source_adapters/gmr/dance1_subject1_f000000_000600/official_loader_positions.npz
+    sha256: 769c2631009b6a93e91a15b90e63d4e341f74ed144f5501a356fdd0319bb1e42
+    size_bytes: 297095
+  omniretarget:
+    path: source_adapters/omniretarget/dance1_subject1_f000000_000600/pilot_canonical.npy
+    sha256: abbfe009cf009d5ca61d03f1c74235d75516181d12398cd6c370555f4a1ee402
+    size_bytes: 316928
+  protomotions_v3:
+    path: source_adapters/protomotions_v3/dance1_subject1_f000000_000600/keypoints.npy
+    sha256: 5d4b1055a0a00368af7e72d95a0dab80f6e2327b3d393fe10b68257421bc740a
+    size_bytes: 1056650
+    status: input_schema_ready_only
+    caveat: Direct LAFAN semantic keypoints avoid a hidden LAFAN-to-SMPL pose fitter;
+      source local-frame axes are not claimed to be SMPL local axes.
+full_lafan_authorized: false

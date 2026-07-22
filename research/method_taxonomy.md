@@ -5,19 +5,20 @@ Solvers, controllers, trackers, datasets, and benchmarks are retained as lineage
 
 | System | Classification | Stage 1 role | Rationale |
 |---|---|---|---|
-| Controlled Sparse-IK | controlled_baseline | required | Tests the root+4EE sufficiency hypothesis under a controlled backend. |
-| Controlled Dense-KeyBody IK | controlled_baseline | required | Task-density control sharing all Sparse solver settings. |
-| GMR | retargeter | required | Public direct human-to-G1 pipeline and controlled-baseline anchor. |
-| OmniRetarget / Holosoma | retargeter | required | Primary interaction-aware method and official case-study source. |
-| ProtoMotions v3 | retargeter_and_framework | conditional_1 | Current public generation; two-hour native-adapter gate. |
-| PHC retargeter | retargeter_component | conditional_2 | Historically important learned-humanoid lineage; two-hour gate. |
-| ProtoMotions v2 | historical_retargeter | lineage_only | Historical v2/v3 backend evidence; not core-first execution. |
-| SOMA Retargeter | retargeter | lineage_unless_native_adapter | No unverified LAFAN-to-SOMA hidden retargeter is permitted. |
-| cuRoboV2 MotionRetargeter | retargeter | lineage_unless_native_adapter | Input compatibility must be demonstrated without a hidden retargeter. |
-| MaskedMimic | controller_tracker | pipeline_context_only | Downstream tracking/control must not become an experimental retargeter point. |
-| BeyondMimic | controller_tracker | pipeline_context_only | Consumes references rather than generating them from human motion. |
-| LocoMuJoCo | dataset_benchmark | pipeline_context_only | Benchmark/data must not be represented as a retargeting algorithm. |
-| Mink | solver_backend | backend_only | A naked solver is not an independent full retargeter. |
-| PyRoki | solver_backend | backend_only | A backend is lineage evidence, not an experimental system point. |
-| MIRROR | retargeter_non_g1 | excluded | Target robot does not satisfy the frozen Unitree G1 scope. |
-| ReActor | physics_aware_controller | literature_only | RL training/dynamics rollout is explicitly excluded from Stage 1. |
+| Controlled Sparse-IK | controlled_baseline | required | required; completed |
+| Controlled Dense-KeyBody IK | controlled_baseline | required | required; completed |
+| GMR | retargeter | required | required; completed |
+| OmniRetarget / Holosoma | retargeter | required | required; completed |
+| ProtoMotions v3 | retargeter_and_framework | conditional_1 | reported by bounded gate when not integration-ready |
+| PHC retargeter | retargeter_component | conditional_2 | reported by bounded gate when LAFAN-to-SMPL adapter/environment is not ready |
+| ProtoMotions v2 | historical_retargeter | lineage_only | no stable historical ref frozen within Pilot |
+| SOMA Retargeter | retargeter | lineage_input_incompatible | no verified lossless LAFAN-to-SOMA adapter |
+| cuRoboV2 MotionRetargeter | retargeter | lineage_input_incompatible | no verified lossless LAFAN-to-SOMA adapter |
+| PhySINK / PHUMA | physics_aware_retargeting | literature_only | no frozen public end-to-end Pilot pipeline verified |
+| MaskedMimic | controller_tracker | pipeline_context_only | consumes conditions as a trained controller; not offline human-to-G1 retargeting |
+| BeyondMimic | controller_tracker | pipeline_context_only | requires an existing generalized-coordinate robot reference |
+| LocoMuJoCo | dataset_benchmark | pipeline_context_only | benchmark/data rather than an independent raw-human-to-G1 algorithm |
+| Mink | solver_backend | backend_only | not a complete input-to-output retargeter |
+| PyRoki | solver_backend | backend_only | not a complete input-to-output retargeter |
+| MIRROR | retargeter_non_g1 | excluded | target robot is not Unitree G1 |
+| ReActor | physics_aware_controller | literature_only | RL training and dynamics rollout are outside Stage 1 |

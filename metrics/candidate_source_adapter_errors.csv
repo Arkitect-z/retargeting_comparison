@@ -1,0 +1,2 @@
+adapter,method,frames,fps,primary_semantic_joints,auxiliary_points,root_aligned_primary_mpjpe_m,foot_contact_agreement,status,caveat
+canonical_lafan_to_protomotions_v3_keypoints,protomotions_v3,600,30.000300003000028,15,3,0.0,1.0,schema_ready,Direct LAFAN semantic keypoints avoid a hidden LAFAN-to-SMPL pose fitter; source local-frame axes are not claimed to be SMPL local axes.

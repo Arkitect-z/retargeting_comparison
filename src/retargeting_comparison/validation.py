@@ -10,7 +10,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .constants import FULL_LAFAN_STOP_MESSAGE
+from .calibration import load_evaluator_protocol
+from .constants import FULL_LAFAN_STOP_MESSAGE, STAGE1_RUN_DIRECTORIES
 from .io_utils import atomic_write_json, load_yaml, sha256_file
 from .reporting import CORE_LABELS, REPORTS, _run_paths, artifact_manifest
 from .schemas import CanonicalG1, RunManifest, RunStatus
@@ -28,7 +29,8 @@ def _core_motion_check(motion: CanonicalG1, source_frame_count: int) -> bool:
 
 def _run_hashes_check(root: Path, sequence_id: str) -> bool:
     for label, output in _run_paths(root).items():
-        manifest_path = root / "manifests" / "runs" / f"{sequence_id}__{label}.json"
+        run_label = STAGE1_RUN_DIRECTORIES[label]
+        manifest_path = root / "manifests" / "runs" / f"{sequence_id}__{run_label}.json"
         if not manifest_path.is_file() or not output.is_file():
             return False
         manifest = RunManifest.load(manifest_path)
@@ -38,7 +40,12 @@ def _run_hashes_check(root: Path, sequence_id: str) -> bool:
 
 
 def _smoke_check(root: Path, sequence_id: str) -> bool:
-    labels = ("sparse-neutral-smoke2", "dense-smoke2", "gmr-smoke2", "omniretarget-smoke2")
+    labels = (
+        "sparse-neutral-v2-smoke2",
+        "dense-v2-smoke2",
+        "gmr-smoke2",
+        "omniretarget-smoke2",
+    )
     for label in labels:
         output = root / "runs" / sequence_id / label / "canonical_g1.npz"
         manifest_path = root / "runs" / "manifests" / f"{sequence_id}__{label}.json"
@@ -75,10 +82,11 @@ def _body_models_check(root: Path) -> bool:
 
 def _source_adapters_check(root: Path) -> bool:
     path = root / "metrics" / "source_adapter_errors.csv"
-    if not path.is_file():
+    manifest_path = root / "manifests" / "source_adapters.yaml"
+    if not path.is_file() or not manifest_path.is_file():
         return False
     rows = pd.read_csv(path)
-    if len(rows) < 2:
+    if set(rows.method.astype(str)) != {"gmr", "omniretarget"}:
         return False
     required = ("frame_count_match", "fps_match", "left_right_match")
     for column in required:
@@ -86,11 +94,27 @@ def _source_adapters_check(root: Path) -> bool:
         normalized = values if values.dtype == bool else values.astype(str).str.lower().eq("true")
         if not bool(normalized.all()):
             return False
-    numeric = rows[["common_joints", "root_aligned_mpjpe_m", "max_joint_error_m"]].to_numpy()
+    numeric_columns = (
+        "common_joints",
+        "root_aligned_mpjpe_m",
+        "max_joint_error_m",
+        "bone_length_error_mean_m",
+        "bone_length_error_max_m",
+        "root_translation_error_mean_m",
+        "root_translation_error_max_m",
+        "yaw_error_mean_rad",
+        "yaw_error_max_rad",
+        "foot_contact_agreement",
+    )
+    numeric = rows[list(numeric_columns)].to_numpy()
+    manifest = load_yaml(manifest_path)
     return bool(
         rows.status.astype(str).str.lower().eq("passed").all()
         and np.isfinite(numeric).all()
         and (rows.common_joints > 0).all()
+        and manifest.get("schema_version") == 2
+        and manifest.get("metrics_sha256") == sha256_file(path)
+        and manifest.get("native_artifacts_committed_to_git") is False
     )
 
 
@@ -135,7 +159,7 @@ def _rerun_visualization_check(root: Path, sequence_id: str) -> bool:
         "sparse-b",
     }
     if (
-        value.get("schema_version") != 2
+        value.get("schema_version") != 3
         or value.get("sequence_id") != sequence_id
         or set(value.get("methods", [])) != expected_methods
         or value.get("frames_logged") != 600
@@ -157,10 +181,186 @@ def _rerun_visualization_check(root: Path, sequence_id: str) -> bool:
         if not asset.is_file() or sha256_file(asset) != expected_hash:
             return False
     for label in expected_methods:
-        run = root / "runs" / sequence_id / label / "canonical_g1.npz"
+        run = (
+            root
+            / "runs"
+            / sequence_id
+            / STAGE1_RUN_DIRECTORIES[label]
+            / "canonical_g1.npz"
+        )
         if not run.is_file() or value.get("method_outputs", {}).get(label) != sha256_file(run):
             return False
     return True
+
+
+def _evaluator_protocol_check(root: Path, sequence: dict[str, Any]) -> bool:
+    """Verify that every result uses one frozen, method-independent protocol."""
+
+    path = root / "manifests" / "evaluator.yaml"
+    if not path.is_file():
+        return False
+    try:
+        protocol = load_evaluator_protocol(path)
+    except (TypeError, ValueError):
+        return False
+    common_scale = float(protocol["scale"]["common_static_scale"])
+    config = load_yaml(root / "configs" / "controlled_mink.yaml")
+    common = config["common"]
+    if not (
+        protocol.get("source_sha256") == sequence.get("cropped_sha256")
+        and protocol.get("full_lafan_authorized") is False
+        and protocol["heading"].get("uses_bvh_root_quaternion") is False
+        and np.isclose(common["position_scale_root_torso_legs"], common_scale)
+        and np.isclose(common["position_scale_arms"], common_scale)
+    ):
+        return False
+    protocol_sha256 = sha256_file(path)
+    for label in CORE_LABELS:
+        summary_path = root / "metrics" / "runs" / f"{label}_summary.json"
+        if not summary_path.is_file():
+            return False
+        summary = json.loads(summary_path.read_text())
+        if not (
+            summary.get("evaluator_schema_version") == 2
+            and summary.get("evaluator_protocol_sha256") == protocol_sha256
+            and np.isclose(summary.get("common_static_scale", np.nan), common_scale)
+        ):
+            return False
+    return True
+
+
+def _scientific_evidence_check(root: Path) -> bool:
+    """Check the disaggregated evidence required for a scientific Pilot."""
+
+    required_files = (
+        "metrics/root_scale_diagnostics.csv",
+        "metrics/controlled_task_residuals.csv",
+        "metrics/sparse_seed_variance.csv",
+        "metrics/sparse_seed_variance_per_frame.csv",
+        "figures/root_scale_policies.svg",
+        "figures/root_error_decomposition.svg",
+        "figures/artifact_components.svg",
+    )
+    if not all((root / name).is_file() for name in required_files):
+        return False
+    scales = pd.read_csv(root / "metrics" / "root_scale_diagnostics.csv")
+    residuals = pd.read_csv(root / "metrics" / "controlled_task_residuals.csv")
+    expected = set(CORE_LABELS)
+    if set(scales.label.astype(str)) != expected:
+        return False
+    if set(residuals.label.astype(str)) != {
+        "sparse-neutral",
+        "sparse-a",
+        "sparse-b",
+        "dense",
+    }:
+        return False
+    required_scale_columns = (
+        "common_static_scale",
+        "native_root_scale",
+        "effective_root_xy_scale",
+        "root_translation_common_scale_mean_m",
+        "root_translation_native_scale_mean_m",
+        "root_translation_scale_invariant_mean_m",
+    )
+    numeric = scales[list(required_scale_columns)].to_numpy(dtype=float)
+    if not np.isfinite(numeric).all():
+        return False
+    common_values = scales.common_static_scale.to_numpy(dtype=float)
+    if not np.allclose(common_values, common_values[0], atol=1e-12, rtol=0.0):
+        return False
+    controlled = scales[scales.label.isin(("sparse-neutral", "sparse-a", "sparse-b", "dense"))]
+    if not np.allclose(
+        controlled.native_root_scale,
+        controlled.common_static_scale,
+        atol=1e-12,
+        rtol=0.0,
+    ):
+        return False
+    return bool(np.isfinite(residuals.select_dtypes(include=[np.number]).to_numpy()).all())
+
+
+def _timing_protocol_check(root: Path) -> bool:
+    sequence_id = _sequence_id(root)
+    for label in CORE_LABELS:
+        path = root / "runs" / sequence_id / STAGE1_RUN_DIRECTORIES[label] / "timing.json"
+        if not path.is_file():
+            return False
+        timing = json.loads(path.read_text())
+        protocol = timing.get("protocol", {})
+        if not (
+            protocol.get("cold_processes") == 1
+            and protocol.get("warmup_runs") == 1
+            and protocol.get("measured_warm_runs") == 3
+            and protocol.get("threads") == 1
+            and protocol.get("visualization") is False
+            and len(timing.get("end_to_end_rtf_raw", [])) == 3
+            and len(timing.get("native_core_rtf_raw", [])) == 3
+        ):
+            return False
+    return True
+
+
+def _sequence_id(root: Path) -> str:
+    return str(load_yaml(root / "manifests" / "pilot_sequence.yaml")["sequence_id"])
+
+
+def _stage0_evidence_check(root: Path) -> bool:
+    matrix_path = root / "research" / "human_to_g1_method_matrix.csv"
+    claims_path = root / "research" / "claims.csv"
+    candidates_path = root / "metrics" / "conditional_candidates.csv"
+    required_visuals = (
+        "research/lineage_graph.svg",
+        "research/lineage_graph.pdf",
+        "research/lineage_graph.png",
+        "research/lineage_graph_source.csv",
+    )
+    if not (
+        matrix_path.is_file()
+        and claims_path.is_file()
+        and candidates_path.is_file()
+        and all((root / path).is_file() for path in required_visuals)
+    ):
+        return False
+    matrix = pd.read_csv(matrix_path)
+    required_columns = {
+        "name",
+        "version_or_commit",
+        "publication_year",
+        "open_source_status",
+        "source_representation",
+        "target_robot",
+        "g1_29dof_supported",
+        "outputs_g1_reference_trajectory",
+        "retargeting_family",
+        "optimizer",
+        "kinematics_backend",
+        "collision_backend",
+        "temporal_scope",
+        "contact_handling",
+        "object_or_terrain_support",
+        "requires_training",
+        "requires_rl_training",
+        "requires_pre_retargeted_input",
+        "experiment_status",
+        "exclusion_reason",
+        "official_source",
+    }
+    if not required_columns.issubset(matrix.columns) or len(matrix) < 15:
+        return False
+    claims = pd.read_csv(claims_path)
+    if len(claims) < 8 or not {"historical", "experimental", "scope"}.issubset(
+        set(claims.claim_type.astype(str))
+    ):
+        return False
+    candidates = pd.read_csv(candidates_path)
+    if set(candidates.candidate.astype(str)) != {"ProtoMotions v3", "PHC"}:
+        return False
+    allowed = {"passed", "na"}
+    return bool(
+        candidates.status.astype(str).isin(allowed).all()
+        and (candidates.elapsed_s.astype(float) <= candidates.gate_limit_s.astype(float)).all()
+    )
 
 
 def _test_evidence_check(root: Path) -> bool:
@@ -204,6 +404,10 @@ def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
     checks["four_method_smoke_tests"] = _smoke_check(root, sequence["sequence_id"])
     checks["body_models_finite_and_hashed"] = _body_models_check(root)
     checks["source_adapters_passed"] = _source_adapters_check(root)
+    checks["evaluator_protocol_frozen"] = _evaluator_protocol_check(root, sequence)
+    checks["scientific_evidence_complete"] = _scientific_evidence_check(root)
+    checks["timing_protocol_complete"] = _timing_protocol_check(root)
+    checks["stage0_evidence_complete"] = _stage0_evidence_check(root)
     checks["artifact_hashes_valid"] = _artifact_hashes_check(root)
     checks["rerun_visualization_complete"] = _rerun_visualization_check(
         root, sequence["sequence_id"]

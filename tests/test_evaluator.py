@@ -3,6 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from retargeting_comparison.calibration import (
+    build_evaluator_protocol,
+    human_heading_yaw,
+)
 from retargeting_comparison.evaluator import HUMAN_SEMANTIC_JOINTS, evaluate_motion
 from retargeting_comparison.robot_model import CanonicalRobotModel, default_robot_scene
 from retargeting_comparison.schemas import CanonicalG1, CanonicalHuman
@@ -64,6 +68,26 @@ def test_matched_motion_has_zero_fidelity_and_temporal_error() -> None:
     assert np.allclose(table.joint_velocity_rms_rad_s, 0.0)
     assert np.allclose(table.pose_jump_rms_m, 0.0)
     assert summary["completion_ratio"] == 1.0
+    assert summary["evaluator_schema_version"] == 2
+    assert summary["common_static_scale"] == pytest.approx(1.0)
+
+
+def test_heading_does_not_depend_on_bvh_root_quaternion_axes() -> None:
+    robot = CanonicalRobotModel(default_robot_scene())
+    human, _ = _matched_pair(robot)
+    expected = human_heading_yaw(human)
+    human.world_rotations[..., :] = np.asarray([0.5, 0.5, 0.5, 0.5])
+    assert np.allclose(human_heading_yaw(human), expected)
+
+
+def test_common_scale_uses_neutral_robot_not_a_method_output_pose() -> None:
+    robot = CanonicalRobotModel(default_robot_scene())
+    human, motion = _matched_pair(robot)
+    protocol = build_evaluator_protocol(human, robot, source_path="synthetic")
+    expected = protocol["scale"]["common_static_scale"]
+    motion.qpos[:, 7] = 0.5
+    _, summary = evaluate_motion(human, motion, robot, protocol)
+    assert summary["common_static_scale"] == pytest.approx(expected)
 
 
 def test_synthetic_joint_limit_and_invalid_frame_are_artifacts() -> None:
@@ -89,11 +113,13 @@ def test_synthetic_skating_penetration_and_temporal_metrics() -> None:
     motion.qpos[:, 7] = [0.0, 0.1, -0.1, 0.2]
     motion.qpos[2:, 2] -= 0.1
     table, summary = evaluate_motion(human, motion, robot)
-    assert table.foot_skating.all()
+    # Frame zero has no preceding robot sample, so skating starts at frame one.
+    assert not bool(table.loc[0, "foot_skating"])
+    assert table.loc[1:, "foot_skating"].all()
     assert table.ground_penetration_depth_m.max() > 0.09
     assert table.joint_velocity_rms_rad_s.max() > 0.0
     assert table.joint_acceleration_rms_rad_s2.max() > 0.0
     assert table.joint_jerk_rms_rad_s3.max() > 0.0
     assert table.pose_jump_rms_m.max() > 0.0
     assert summary["ground_penetration_frame_rate"] > 0.0
-    assert summary["artifact_rate"] == 1.0
+    assert summary["artifact_rate"] == 0.75

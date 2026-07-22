@@ -17,7 +17,8 @@ from typing import Any
 
 import numpy as np
 
-from .constants import G1_JOINT_NAMES
+from .calibration import human_heading_yaw, load_evaluator_protocol
+from .constants import G1_JOINT_NAMES, STAGE1_RUN_DIRECTORIES
 from .io_utils import atomic_write_json, load_yaml, sha256_file
 from .rotations import quaternion_wxyz_to_matrix, yaw_from_matrix
 from .schemas import CanonicalG1, CanonicalHuman
@@ -115,6 +116,11 @@ METRIC_FIELDS = (
     "right_foot_speed_m_s",
     "left_source_stance",
     "right_source_stance",
+    "left_foot_skating",
+    "right_foot_skating",
+    "ground_penetration_artifact",
+    "joint_limit_artifact",
+    "invalid_artifact",
     "artifact",
     "solve_time_s",
 )
@@ -375,29 +381,6 @@ def _load_metrics(path: Path, frame_count: int) -> dict[str, np.ndarray]:
     return result
 
 
-def _height_scale(human: CanonicalHuman, robot_points: np.ndarray) -> float:
-    names = {name: index for index, name in enumerate(human.joint_names.astype(str))}
-    required = ("Head", "LeftToe", "RightToe")
-    missing = [name for name in required if name not in names]
-    if missing:
-        raise ValueError(f"Canonical human is missing visualization joints: {missing}")
-    human_foot = 0.5 * (
-        human.world_positions[0, names["LeftToe"]]
-        + human.world_positions[0, names["RightToe"]]
-    )
-    robot_foot = 0.5 * (
-        robot_points[0, ROBOT_SEMANTIC_INDEX["left_toe"]]
-        + robot_points[0, ROBOT_SEMANTIC_INDEX["right_toe"]]
-    )
-    human_height = np.linalg.norm(human.world_positions[0, names["Head"]] - human_foot)
-    robot_height = np.linalg.norm(
-        robot_points[0, ROBOT_SEMANTIC_INDEX["head"]] - robot_foot
-    )
-    if human_height < 0.5 or robot_height < 0.5:
-        raise ValueError("Implausible source or robot height in visualization")
-    return float(robot_height / human_height)
-
-
 def load_stage1_visualization(
     repo_root: str | Path = ".",
     sequence_manifest: str | Path = "manifests/pilot_sequence.yaml",
@@ -420,7 +403,13 @@ def load_stage1_visualization(
     sequence_id = sequence["sequence_id"]
     methods: dict[str, MethodVisualization] = {}
     for style in METHOD_STYLES:
-        path = root / "runs" / sequence_id / style.key / "canonical_g1.npz"
+        path = (
+            root
+            / "runs"
+            / sequence_id
+            / STAGE1_RUN_DIRECTORIES[style.key]
+            / "canonical_g1.npz"
+        )
         if not path.is_file():
             raise FileNotFoundError(f"Required Stage 1 visualization output is missing: {path}")
         motion = CanonicalG1.load(path)
@@ -440,12 +429,12 @@ def load_stage1_visualization(
             metrics,
         )
 
-    reference = methods["sparse-neutral"].positions
+    protocol = load_evaluator_protocol(root / "manifests" / "evaluator.yaml")
     return Stage1Visualization(
         repo_root=root,
         sequence=sequence,
         human=human,
-        human_scale=_height_scale(human, reference),
+        human_scale=float(protocol["scale"]["common_static_scale"]),
         methods=methods,
         urdf_path=urdf_path,
         robot_visuals=kinematics.visuals,
@@ -533,13 +522,15 @@ def visual_instance_poses(
 
 
 def _world_aligned_human(data: Stage1Visualization) -> np.ndarray:
-    reference_root = data.methods["sparse-neutral"].positions[0, ROBOT_SEMANTIC_INDEX["root"]]
-    aligned_origin = np.asarray([0.0, 0.0, reference_root[2]])
-    return (
-        (data.human.world_positions - data.human.root_translation[0, None, :])
-        * data.human_scale
-        + aligned_origin[None, None, :]
-    )
+    points = (
+        data.human.world_positions - data.human.root_translation[0, None, :]
+    ) * data.human_scale
+    names = {name: index for index, name in enumerate(data.human.joint_names.astype(str))}
+    feet = [names[name] for name in ("LeftFoot", "LeftToe", "RightFoot", "RightToe")]
+    # Display alignment is method-independent: source feet start on z=0.  It
+    # cannot inherit the root height or scale of a comparison method.
+    points[..., 2] -= float(np.min(points[0, feet, 2]))
+    return points
 
 
 def _human_edges(human: CanonicalHuman) -> tuple[tuple[int, int], ...]:
@@ -551,11 +542,20 @@ def _segments(points: np.ndarray, edges: tuple[tuple[int, int], ...]) -> list[np
 
 
 def _recording_id(data: Stage1Visualization) -> str:
-    digest = hashlib.sha256(b"articulated_g1_visual_meshes_v2")
+    digest = hashlib.sha256(b"articulated_g1_visual_meshes_v3_evaluator_v2")
     digest.update(data.human.source_sha256.encode())
     digest.update(bytes.fromhex(sha256_file(data.urdf_path)))
+    digest.update(
+        bytes.fromhex(sha256_file(data.repo_root / "manifests" / "evaluator.yaml"))
+    )
     for style in METHOD_STYLES:
-        path = data.repo_root / "runs" / data.sequence["sequence_id"] / style.key / "canonical_g1.npz"
+        path = (
+            data.repo_root
+            / "runs"
+            / data.sequence["sequence_id"]
+            / STAGE1_RUN_DIRECTORIES[style.key]
+            / "canonical_g1.npz"
+        )
         digest.update(bytes.fromhex(sha256_file(path)))
     for visual in data.robot_visuals:
         digest.update(bytes.fromhex(sha256_file(visual.mesh_path)))
@@ -576,10 +576,13 @@ def _blueprint(rrb: Any, fps: float) -> Any:
     )
     metrics = rrb.Tabs(
         rrb.TimeSeriesView(origin="/metrics/rf_kpe_all", name="RF-KPE all"),
-        rrb.TimeSeriesView(origin="/metrics/root_translation", name="Root translation"),
+        rrb.TimeSeriesView(
+            origin="/metrics/root_translation",
+            name="Root translation · common scale",
+        ),
         rrb.TimeSeriesView(origin="/metrics/root_yaw", name="Root yaw"),
         rrb.TimeSeriesView(origin="/metrics/ground_penetration", name="Ground penetration"),
-        rrb.TimeSeriesView(origin="/metrics/artifact", name="Artifact flags"),
+        rrb.TimeSeriesView(origin="/metrics/artifact", name="Cause-triggered flags"),
         rrb.TimeSeriesView(origin="/metrics/solve_time", name="Per-frame solve time"),
         name="Measured metrics",
     )
@@ -639,6 +642,21 @@ def _foot_colors(method: MethodVisualization, frame: int) -> list[tuple[int, int
         else:
             colors.append((126, 136, 151))
     return colors
+
+
+def _artifact_label(method: MethodVisualization, frame: int) -> str:
+    causes = []
+    if bool(method.metrics["invalid_artifact"][frame]):
+        causes.append("INVALID")
+    if bool(method.metrics["ground_penetration_artifact"][frame]):
+        causes.append("PENETRATION")
+    if bool(method.metrics["joint_limit_artifact"][frame]):
+        causes.append("JOINT-LIMIT")
+    if bool(method.metrics["left_foot_skating"][frame]):
+        causes.append("SKATING-L")
+    if bool(method.metrics["right_foot_skating"][frame]):
+        causes.append("SKATING-R")
+    return "+".join(causes)
 
 
 def _log_series_styles(rr: Any, data: Stage1Visualization) -> None:
@@ -813,7 +831,7 @@ def write_rerun_recording(
 
     human_edges = _human_edges(data.human)
     world_human = _world_aligned_human(data)
-    human_yaw = yaw_from_matrix(quaternion_wxyz_to_matrix(data.human.world_rotations[:, 0]))
+    human_yaw = human_heading_yaw(data.human)
     root_human = root_frame_points(
         data.human.world_positions,
         data.human.root_translation,
@@ -885,8 +903,8 @@ def write_rerun_recording(
 
         for style in METHOD_STYLES:
             method = data.methods[style.key]
-            artifact = bool(method.metrics["artifact"][frame])
-            label = style.display_name + (" · ARTIFACT" if artifact else "")
+            cause = _artifact_label(method, frame)
+            label = style.display_name + (f" · {cause}" if cause else "")
             feet = _foot_colors(method, frame)
             _log_pose(
                 rr,
@@ -977,9 +995,12 @@ def write_rerun_recording(
 
     rr.disconnect()
     result: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "sequence_id": data.sequence["sequence_id"],
         "source_sha256": data.human.source_sha256,
+        "evaluator_protocol_sha256": sha256_file(
+            data.repo_root / "manifests" / "evaluator.yaml"
+        ),
         "rerun_version": rr.__version__,
         "recording_id": _recording_id(data),
         "frames_logged": len(frames),
@@ -992,7 +1013,7 @@ def write_rerun_recording(
                 data.repo_root
                 / "runs"
                 / data.sequence["sequence_id"]
-                / style.key
+                / STAGE1_RUN_DIRECTORIES[style.key]
                 / "canonical_g1.npz"
             )
             for style in METHOD_STYLES

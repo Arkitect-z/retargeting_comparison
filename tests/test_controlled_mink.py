@@ -28,6 +28,11 @@ def test_sparse_dense_only_vary_declared_target_set() -> None:
     assert sparse == [target for target in dense if target["semantic"] in {
         "root", "left_wrist", "right_wrist", "left_ankle", "right_ankle"
     }]
+    assert common["position_scale_root_torso_legs"] == common["position_scale_arms"]
+    assert common["temporal_smoothness_cost"] > 0.0
+    assert common["temporal_smoothness_cost"] < min(
+        target["position_cost"] for target in dense
+    )
 
 
 def test_sparse_seeds_are_deterministic_and_distinct() -> None:
@@ -40,3 +45,9 @@ def test_sparse_seeds_are_deterministic_and_distinct() -> None:
     assert not np.array_equal(neutral, a_first)
     assert not np.array_equal(a_first, b)
     assert np.allclose(a_first[:7], neutral[:7])
+
+
+def test_controlled_baseline_has_distinct_posture_and_temporal_tasks() -> None:
+    retargeter = ControlledMinkRetargeter(".", "sparse")
+    assert retargeter.posture is not retargeter.temporal
+    assert retargeter.tasks[-2:] == [retargeter.posture, retargeter.temporal]
