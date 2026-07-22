@@ -45,7 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
     adapters.add_argument("--repo-root", default=".")
     run_method = sub.add_parser("run-method", help="run one frozen retargeting method")
     run_method.add_argument(
-        "--method", choices=("sparse", "dense", "gmr", "omniretarget", "holosoma"), required=True
+        "--method",
+        choices=("sparse", "dense", "gmr", "omniretarget", "holosoma", "protomotions_v2_3", "protomotions_v3"),
+        required=True,
     )
     run_method.add_argument("--sequence", required=True)
     run_method.add_argument("--seed", choices=("neutral", "A", "B"), default="neutral")
@@ -54,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_method.add_argument("--refresh-timing", action="store_true")
     run_method.add_argument(
         "--revision",
-        help="immutable controlled-baseline run suffix, e.g. v2",
+        help="immutable run suffix used when a protocol/config revision must preserve prior evidence",
     )
     evaluate = sub.add_parser("evaluate", help="evaluate one canonical run")
     evaluate.add_argument("--run", required=True)
@@ -89,8 +91,70 @@ def build_parser() -> argparse.ArgumentParser:
     visualization.add_argument("--spawn", action="store_true")
     visualization.add_argument("--max-frames", type=int)
     visualization.add_argument("--stride", type=int, default=1)
+    scale = sub.add_parser(
+        "run-scale-sensitivity",
+        help="run the registered pre-solver scale-policy experiments",
+    )
+    scale.add_argument("--repo-root", default=".")
+    scale.add_argument(
+        "--phase",
+        choices=(
+            "targets",
+            "controlled",
+            "contacts",
+            "shape",
+            "native",
+            "native-contact",
+            "summarize",
+            "all",
+        ),
+        default="all",
+    )
+    scale.add_argument(
+        "--method",
+        choices=("gmr", "omniretarget", "protomotions_v2_3", "protomotions_v3"),
+        action="append",
+    )
+    scale.add_argument(
+        "--variant",
+        choices=("native", "root_minus_5", "root_plus_5", "local_minus_5", "local_plus_5"),
+        action="append",
+        help="limit the native-response phase to one or more registered variants",
+    )
     validate = sub.add_parser("validate-stage1", help="validate Stage 1 and its hard stop")
     validate.add_argument("--repo-root", default=".")
+    timing = sub.add_parser(
+        "run-stage1-timing",
+        help="preview or execute the frozen sequential Stage 1 timing campaign",
+    )
+    timing.add_argument("--repo-root", default=".")
+    timing.add_argument("--config", default="configs/stage1_timing_campaign.yaml")
+    timing.add_argument("--state", default="manifests/stage1_timing_campaign.json")
+    timing.add_argument("--launch", action="store_true")
+    stage2_plan = sub.add_parser(
+        "plan-stage2", help="build the immutable budget-gated Stage 2 plan"
+    )
+    stage2_plan.add_argument("--repo-root", default=".")
+    stage2_plan.add_argument("--config", default="configs/stage2.yaml")
+    stage2_plan.add_argument("--output")
+    stage2_run = sub.add_parser(
+        "run-stage2", help="preview or execute an exact acknowledged Stage 2 plan"
+    )
+    stage2_run.add_argument("--repo-root", default=".")
+    stage2_run.add_argument("--config", default="configs/stage2.yaml")
+    stage2_run.add_argument("--plan", required=True)
+    stage2_run.add_argument("--plan-sha256", required=True)
+    stage2_run.add_argument("--launch", action="store_true")
+    stage2_report = sub.add_parser(
+        "build-stage2-report", help="aggregate succeeded Stage 2 jobs and publish evidence"
+    )
+    stage2_report.add_argument("--repo-root", default=".")
+    stage2_report.add_argument("--plan", required=True)
+    stage2_validate = sub.add_parser(
+        "validate-stage2", help="validate tracked Stage 2 evidence without launching jobs"
+    )
+    stage2_validate.add_argument("--repo-root", default=".")
+    stage2_validate.add_argument("--plan", required=True)
     return parser
 
 
@@ -227,6 +291,17 @@ def main(argv: list[str] | None = None) -> int:
         print(result["decision"])
         print(FULL_LAFAN_STOP_MESSAGE)
         return 0 if result["decision"] in {"GO", "GO WITH CHANGES"} else 1
+    if args.command == "run-stage1-timing":
+        from .stage1_timing_campaign import run_stage1_timing_campaign
+
+        result = run_stage1_timing_campaign(
+            args.repo_root,
+            args.config,
+            args.state,
+            launch=args.launch,
+        )
+        print(result["status"])
+        return 0 if result["status"] in {"preview", "succeeded"} else 1
     if args.command == "build-report":
         from .reporting import build_report
 
@@ -251,6 +326,105 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(result["output"] or "Rerun viewer spawned")
         return 0
+    if args.command == "run-scale-sensitivity":
+        # Native workers deliberately avoid importing the pandas/Mink/report
+        # stack.  This branch must remain above the rich analysis-module
+        # import so the exact command is runnable inside clean method envs.
+        if args.phase == "native":
+            from .scale_worker import run_native_response
+
+            for method in args.method or [
+                "gmr",
+                "omniretarget",
+                "protomotions_v2_3",
+                "protomotions_v3",
+            ]:
+                print(
+                    "\n".join(
+                        map(
+                            str,
+                            run_native_response(
+                                method, args.repo_root, args.variant
+                            ),
+                        )
+                    )
+                )
+            return 0
+        if args.phase == "native-contact":
+            from .scale_worker import run_holosoma_native_contact_robustness
+
+            methods = args.method or ["omniretarget"]
+            if methods != ["omniretarget"] or args.variant:
+                raise SystemExit(
+                    "native-contact is the registered five-row Holosoma arm; "
+                    "use --method omniretarget and do not select variants"
+                )
+            print(
+                "\n".join(
+                    map(
+                        str,
+                        run_holosoma_native_contact_robustness(args.repo_root),
+                    )
+                )
+            )
+            return 0
+        from .scale_sensitivity import (
+            build_actor_shape_probe,
+            build_contact_flip_diagnostics,
+            build_pre_solver_target_contract,
+            run_controlled_policy_transplants,
+            run_scale_stage,
+            summarize_scale_sensitivity,
+        )
+
+        if args.phase == "targets":
+            print(len(build_pre_solver_target_contract(args.repo_root)))
+        elif args.phase == "controlled":
+            print("\n".join(map(str, run_controlled_policy_transplants(args.repo_root))))
+        elif args.phase == "contacts":
+            print(len(build_contact_flip_diagnostics(args.repo_root)))
+        elif args.phase == "shape":
+            print(len(build_actor_shape_probe(args.repo_root)))
+        elif args.phase == "summarize":
+            print(len(summarize_scale_sensitivity(args.repo_root)))
+        else:
+            print(run_scale_stage(args.repo_root, args.method))
+        return 0
+    if args.command == "plan-stage2":
+        from .stage2 import build_stage2_plan
+
+        plan = build_stage2_plan(
+            args.repo_root,
+            args.config,
+            output_path=args.output,
+        )
+        print(plan["design_id"])
+        print(plan["plan_sha256"])
+        return 0
+    if args.command == "run-stage2":
+        from .stage2 import execute_stage2
+
+        result = execute_stage2(
+            args.repo_root,
+            args.plan,
+            config_path=args.config,
+            expected_plan_sha256=args.plan_sha256,
+            launch=args.launch,
+        )
+        print(result["status"])
+        return 0 if result["status"] in {"preview", "complete"} else 1
+    if args.command == "build-stage2-report":
+        from .stage2_analysis import build_stage2_analysis
+
+        result = build_stage2_analysis(args.repo_root, args.plan)
+        print(result["status"])
+        return 0 if result["status"] == "complete" else 1
+    if args.command == "validate-stage2":
+        from .stage2_analysis import validate_stage2
+
+        result = validate_stage2(args.repo_root, args.plan)
+        print(result["decision"])
+        return 0 if result["decision"] == "GO" else 1
     raise SystemExit(f"Command implementation pending: {args.command}")
 
 

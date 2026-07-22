@@ -70,3 +70,17 @@ def test_g1_rejects_xyzw_identity_mislabelled_as_wxyz() -> None:
     motion.validate()
     assert not np.allclose(motion.qpos[0, 3:7], [1.0, 0.0, 0.0, 0.0])
 
+
+def test_g1_rejects_non_unit_quaternion() -> None:
+    qpos = np.zeros((2, 36))
+    qpos[:, 3] = 1.01
+    motion = CanonicalG1(
+        qpos=qpos,
+        fps=30.0,
+        source_frame_idx=np.arange(2),
+        valid=np.ones(2, dtype=bool),
+        per_frame_solve_time_s=np.zeros(2),
+        metadata={},
+    )
+    with pytest.raises(ValueError, match="unit wxyz"):
+        motion.validate()

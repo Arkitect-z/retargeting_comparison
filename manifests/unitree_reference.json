@@ -1,0 +1,110 @@
+{
+  "adapter": {
+    "implementation_path": "src/retargeting_comparison/unitree_reference.py",
+    "implementation_sha256": "d553a910a0b6880465dff97a25771fa9906f01c7faf72a729def21ab18f2fc77",
+    "operations": "xyzw-to-wxyz and quaternion normalization for both views; canonical view additionally applies fixed Rz(-pi/2); no scale/translation/ground/resample"
+  },
+  "asset_binding": {
+    "canonical_evaluator_scene_path": "external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml",
+    "canonical_evaluator_scene_sha256": "0555862e648ad9b4a1e4e773fa888a7ea6e3795c79b1ebfd7e36c3976615bb24",
+    "canonical_evaluator_urdf_path": "external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.urdf",
+    "canonical_evaluator_urdf_sha256": "49c8b5ccb28ffd29ba32ceac596bededf83ba5eeaf1c49f49bfcb327cfcf0c7e",
+    "evaluator_manifest_path": "manifests/evaluator.yaml",
+    "evaluator_manifest_sha256": "c281cafd0f39a283f97f9f39b0dfc7cfd50862354cfa0890330b144a647b6397",
+    "reference_urdf": {
+      "path": "data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/robot_description/g1/g1_29dof_rev_1_0.urdf",
+      "sha256": "824ce02c2c1e489aa8dece47a10fe02d1872289c0e6d01ba51abd291e66b7b2c",
+      "size_bytes": 36227
+    }
+  },
+  "coordinate_views": {
+    "as_published": {
+      "fps": 30.0,
+      "frame_end_exclusive": 600,
+      "frame_start": 0,
+      "frames": 600,
+      "path": "runs/dance1_subject1_f000000_000600/unitree-attributed-reference/canonical_g1.as-published.npz",
+      "qpos_content_sha256": "b0755c087c5187453f5fe5eff874af321a303404124e01deba627c0f1ff77f27",
+      "sha256": "94b05bc13b4bbfe5a27e233ae246627305229f8f90bb9aa70db01d6c6e0c29ed"
+    },
+    "canonical_coordinate_view": {
+      "fps": 30.0,
+      "frame_end_exclusive": 600,
+      "frame_start": 0,
+      "frames": 600,
+      "path": "runs/dance1_subject1_f000000_000600/unitree-attributed-reference/canonical_g1.npz",
+      "qpos_content_sha256": "c2ad1eafaf229c52fa1b65baeb0e5318ec61420cb53f03929db2bdf502f8c958",
+      "sha256": "96bef53c2e941995f422001107d14bb620a4c208e11bb271cd1ede4295e7aadb"
+    }
+  },
+  "eligible_for_runtime_comparison": false,
+  "g1_csv_inventory": {
+    "aggregate_sha256": "17d894b976910c0c186cc2b0317d0f4b7ecf4d0146c1d3d7c4368b697250bb56",
+    "files": 40
+  },
+  "label": "Unitree-attributed reference corpus",
+  "pinned_resources": {
+    "g1_urdf": {
+      "path": "data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/robot_description/g1/g1_29dof_rev_1_0.urdf",
+      "sha256": "824ce02c2c1e489aa8dece47a10fe02d1872289c0e6d01ba51abd291e66b7b2c",
+      "size_bytes": 36227
+    },
+    "license": {
+      "path": "data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/LICENSE",
+      "sha256": "b7301c8023df98434b61ae4c6730ffc0a13c9b7764ed166dbcfad0131177ba71",
+      "size_bytes": 1596
+    },
+    "metadata": {
+      "path": "data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/meta_data/info.json",
+      "sha256": "2aa8ce734cfbb9dac56c97476f6be23d2dd8b6925501902177a0e637911797b4",
+      "size_bytes": 2162
+    },
+    "readme": {
+      "path": "data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/README.md",
+      "sha256": "e741899b5c42b8654cc49ead2584e46b44425d1ba7b04fd66165c970814c3f5d",
+      "size_bytes": 4268
+    },
+    "visualizer": {
+      "path": "data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/rerun_visualize.py",
+      "sha256": "6e2505bb40b6a303091610cb4ba5d0c264df650fb6f89bd3a79b06ab8320dbeb",
+      "size_bytes": 5825
+    }
+  },
+  "raw_pilot": {
+    "columns": 36,
+    "path": "data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/g1/dance1_subject1.csv",
+    "rows": 3945,
+    "sha256": "e2a369e92e5ad076c5acffff7bce53157a0e6cd9e7e9f6a08dadfb1eb2928d8f",
+    "size_bytes": 1348661
+  },
+  "research_evidence": [
+    {
+      "path": "research/unitree_reference_provenance.csv",
+      "sha256": "e4ccc4b7a6d4863eff6fc87f6fdb4ddbe3a1a380ae5b8141d3e9de5457731c63"
+    },
+    {
+      "path": "research/unitree_reference_pilot_audit.csv",
+      "sha256": "c78062a0c103cace0bbb0fcb457ca5cd6abac7def0d6c31ef70bcc394a9d89dd"
+    },
+    {
+      "path": "research/UNITREE_REFERENCE_CORPUS_AUDIT.md",
+      "sha256": "f5dc77e629bd55090dc0bd79d573e855e500477f4784a1a769243ff541c735f9"
+    }
+  ],
+  "role": "external_reference_not_verified_ground_truth",
+  "schema_version": 2,
+  "source_binding": {
+    "alignment_basis": "same basename and frame indices 0:600",
+    "byte_identical_human_source_verified": false,
+    "canonical_source": "source/canonical_human/dance1_subject1_f000000_000600.npz",
+    "canonical_source_content_sha256": "67e62e7e6e02cd54c8659fd1de9974032639e82948ebb86e2a8c82a060b7c6b5",
+    "canonical_source_file_sha256": "28d7be2545e8fae25671cd3ae84209f951f45829b86409ffdf4e2dba1aca5402",
+    "canonical_source_fps": 30.000300003000028,
+    "exact_timestamp_identity_claimed": false,
+    "sequence_manifest": "manifests/pilot_sequence.yaml",
+    "sequence_manifest_sha256": "5e28ef5087922c11a9e67c807f4c7bc6b16e577774fb008c0f5059331130c1d0"
+  },
+  "upstream_repository": "lvhaidong/LAFAN1_Retargeting_Dataset",
+  "upstream_revision": "ce1572906efe6157840e8474d5a0d7aa87481e74",
+  "verified_official_ground_truth": false
+}

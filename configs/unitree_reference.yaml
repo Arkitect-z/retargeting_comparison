@@ -1,0 +1,136 @@
+schema_version: 1
+label: Unitree-attributed reference corpus
+role: external_reference_not_verified_ground_truth
+eligible_as_ground_truth: false
+eligible_for_runtime_comparison: false
+
+upstream:
+  provider: Hugging Face datasets
+  repository: lvhaidong/LAFAN1_Retargeting_Dataset
+  revision: ce1572906efe6157840e8474d5a0d7aa87481e74
+  revision_last_modified_utc: '2025-04-06T11:20:57Z'
+  dataset_created_utc: '2025-04-06T07:09:26Z'
+  pilot_path: g1/dance1_subject1.csv
+  pilot_sha256: e2a369e92e5ad076c5acffff7bce53157a0e6cd9e7e9f6a08dadfb1eb2928d8f
+  pilot_size_bytes: 1348661
+  pilot_rows: 3945
+  local_ignored_path: data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/g1/dance1_subject1.csv
+  source_url: https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset
+  revision_url: https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset/tree/ce1572906efe6157840e8474d5a0d7aa87481e74
+  owner_caveat_url: https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset/discussions/1
+  owner_caveat: Dataset owner replied that no retargeting material was available and the dataset had been copied.
+  pinned_resources:
+    readme:
+      size_bytes: 4268
+      sha256: e741899b5c42b8654cc49ead2584e46b44425d1ba7b04fd66165c970814c3f5d
+    license:
+      size_bytes: 1596
+      sha256: b7301c8023df98434b61ae4c6730ffc0a13c9b7764ed166dbcfad0131177ba71
+    metadata:
+      size_bytes: 2162
+      sha256: 2aa8ce734cfbb9dac56c97476f6be23d2dd8b6925501902177a0e637911797b4
+    visualizer:
+      size_bytes: 5825
+      sha256: 6e2505bb40b6a303091610cb4ba5d0c264df650fb6f89bd3a79b06ab8320dbeb
+    g1_urdf:
+      size_bytes: 36227
+      sha256: 824ce02c2c1e489aa8dece47a10fe02d1872289c0e6d01ba51abd291e66b7b2c
+
+license_provenance:
+  derived_motion_card_claim: CC-BY-NC-ND-4.0 inherited from LAFAN1
+  repository_license_file: BSD-3-Clause, copyright Unitree Robotics
+  card_code_claim: MIT
+  interpretation: The repository statements do not unambiguously license the trajectory CSV independently of LAFAN1; do not redistribute raw CSV.
+
+format:
+  fps_asserted_by_card: 30.0
+  columns: 36
+  header: false
+  root_source_order: [x, y, z, qx, qy, qz, qw]
+  root_canonical_order: [x, y, z, qw, qx, qy, qz]
+  joint_order_source: canonical_g1_29
+  numeric_unit_claims:
+    root_translation: metres inferred from URDF-compatible visualization and magnitudes; not explicitly stated in the card
+    joint_positions: radians inferred from URDF-compatible visualization and magnitudes; not explicitly stated in the card
+  adapter_operations:
+    quaternion: xyzw_to_wxyz_then_unit_normalize
+    translation: none
+    scale: none
+    grounding: none
+    resampling: none
+    joint_reordering: none
+    coordinate_views:
+      as_published:
+        root_world_rotation: identity
+        use: provenance and raw visualization only
+        qpos_content_sha256: b0755c087c5187453f5fe5eff874af321a303404124e01deba627c0f1ff77f27
+        local_ignored_npz_sha256: f7dbd6aacd536a81cb361729acbe0c6d604ed127adc67137b0a1c2a3bb9221b9
+      canonical_coordinate_view:
+        root_world_rotation: fixed active Rz(-pi/2) applied to root XYZ and orientation
+        fitted_from_results: false
+        translation_m: [0.0, 0.0, 0.0]
+        scale: 1.0
+        use: formal quality comparison
+        qpos_content_sha256: c2ad1eafaf229c52fa1b65baeb0e5318ec61420cb53f03929db2bdf502f8c958
+        local_ignored_npz_sha256: 5c38aa7c309be9762f30315c2c39b5bedcb57c380afbdcbf0a39e7a363f815c0
+
+pilot_slice:
+  source_sequence_id: dance1_subject1_f000000_000600
+  csv_basename_match: true
+  frame_start: 0
+  frame_end_exclusive: 600
+  expected_frames: 600
+  source_bvh_fps: 30.000300003000028
+  reference_asserted_fps: 30.0
+  exact_timestamp_identity_claimed: false
+
+asset_audit:
+  reference_urdf_sha256: 824ce02c2c1e489aa8dece47a10fe02d1872289c0e6d01ba51abd291e66b7b2c
+  canonical_evaluator_urdf_sha256: 49c8b5ccb28ffd29ba32ceac596bededf83ba5eeaf1c49f49bfcb327cfcf0c7e
+  canonical_evaluator_scene_sha256: 0555862e648ad9b4a1e4e773fa888a7ea6e3795c79b1ebfd7e36c3976615bb24
+  actuated_joint_contract_equivalent: true
+  cross_engine_fk:
+    seed: 1947
+    samples: 11
+    link_frames_per_sample: 30
+    max_position_error_m: 4.730919912540416e-07
+    max_rotation_error_rad: 1.456050097978972e-06
+    equivalent_at_1e_minus_5_tolerance: true
+  scope_exclusion: visual/collision/inertial/transmission/actuator/dynamics equivalence is not asserted
+  holosoma_retargeter_urdf_warning:
+    sha256: 1c5a19d8440d246fd6a21645de0b9bc8b92c99ee5cd895607a402db9eb02a32b
+    differing_joint_origins: [waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint, right_shoulder_pitch_joint]
+    max_origin_difference_m: 0.019
+    max_cross_engine_position_difference_m_over_same_11_samples: 0.012011018631222517
+
+observed_pilot_policy:
+  descriptive_only: true
+  root_xy_similarity:
+    scale: 0.7400174555371238
+    rotation_row_major:
+      - [0.000325438886280133, 0.999999947044764]
+      - [-0.999999947044764, 0.0003254388862802414]
+    rmse_m: 0.003423789813776521
+    max_error_m: 0.014524835869190929
+    reference_first_xy_m: [0.000098, -0.000161]
+  root_z_linear_diagnostic:
+    slope: 0.6976396727299282
+    intercept_m: 0.15715794784251183
+    rmse_m: 0.004260533725109857
+  evaluator_coordinate_view_diagnostic:
+    as_published:
+      root_translation_common_scale_mean_m: 2.292015515958924
+      root_yaw_mean_rad: 1.5478567686754385
+      effective_root_xy_scale: 0.00024083045655797148
+    canonical_coordinate_view:
+      root_translation_common_scale_mean_m: 0.006835408075073988
+      root_yaw_mean_rad: 0.03841546203785537
+      effective_root_xy_scale: 0.740017416349325
+    rf_kpe_all_mean_m_both_views: 0.11027856296529255
+    interpretation: The fixed frame conversion removes a convention error; it does not alter root scale or root-frame pose quality.
+  canonical_collision_diagnostic:
+    frames_with_floor_penetration: 22
+    max_penetration_m: 0.00574624213967361
+    note: Uses canonical evaluator collision geometry; upstream collision equivalence is not established.
+
+full_lafan_authorized: false

@@ -1,0 +1,110 @@
+schema_version: 1
+method: protomotions_v2_3_mink
+method_family: benchmark_lafan_port_of_public_solver
+
+upstream:
+  repository: https://github.com/NVlabs/ProtoMotions.git
+  tag: v2.3
+  commit: 4a905b998101333a2fb91f2de8e2cab4bd0db68e
+  worktree: external/ProtoMotions-v2.3
+  implementation: data/scripts/retargeting/mink_retarget.py
+  implementation_sha256: 356087a34d5e68088db0bfa0c15561f506b158efcf013083b19a7bdc011e5f31
+
+native_robot:
+  xml: external/ProtoMotions-v2.3/protomotions/data/assets/mjcf/g1.xml
+  xml_sha256: d7e8e734374217aae0983669fd33cd197b6a09e246aefba8fdefb60708ea5217
+  nq: 36
+  nv: 35
+  nu: 29
+  joint_order:
+    - left_hip_pitch_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+    - right_hip_pitch_joint
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - waist_yaw_joint
+    - waist_roll_joint
+    - waist_pitch_joint
+    - left_shoulder_pitch_joint
+    - left_shoulder_roll_joint
+    - left_shoulder_yaw_joint
+    - left_elbow_joint
+    - left_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - right_shoulder_pitch_joint
+    - right_shoulder_roll_joint
+    - right_shoulder_yaw_joint
+    - right_elbow_joint
+    - right_wrist_roll_joint
+    - right_wrist_pitch_joint
+    - right_wrist_yaw_joint
+
+canonical_robot:
+  xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml
+  xml_sha256: 0555862e648ad9b4a1e4e773fa888a7ea6e3795c79b1ebfd7e36c3976615bb24
+
+frozen_environment:
+  conda_environment: capture
+  python: 3.10.19
+  packages:
+    mink: 1.1.1
+    mujoco: 3.8.1
+    numpy: 2.2.6
+    scipy: 1.13.1
+    quadprog: 0.1.13
+    dm-control: 1.0.36
+    loop-rate-limiters: 1.2.0
+
+algorithm:
+  solver: quadprog
+  solve_damping: 0.1
+  optimization_steps_per_frame: 2
+  warmup_reference_frames: 100
+  warmup_reference_fps: 30.0
+  frame_position_cost: 10.0
+  # Benchmark LAFAN port intervention: upstream SMPL-X segment frames are not
+  # equivalent to BVH joint frames, so an unvalidated orientation residual is
+  # disabled instead of being silently interpreted as native evidence.
+  frame_orientation_cost: 0.0
+  frame_lm_damping: 1.0
+  posture_cost: 1.0
+  posture_lm_damping: 0.0
+  limits: [configuration]
+  position_scale_xyz: [0.75, 1.0, 0.8]
+  ground_alignment: per_frame_match_source_lowest_joint_height
+
+source_adapter:
+  input: canonical_lafan1_world_joints
+  input_units: meters
+  input_up_axis: z
+  input_quaternion_order: wxyz
+  output_quaternion_order: wxyz
+  targets:
+    - {upstream_keypoint: Pelvis, human_joint: Hips, robot_body: pelvis}
+    - {upstream_keypoint: Head, human_joint: Head, robot_body: head}
+    - {upstream_keypoint: L_Hip, human_joint: LeftUpLeg, robot_body: left_hip_yaw_link}
+    - {upstream_keypoint: R_Hip, human_joint: RightUpLeg, robot_body: right_hip_yaw_link}
+    - {upstream_keypoint: L_Knee, human_joint: LeftLeg, robot_body: left_knee_link}
+    - {upstream_keypoint: R_Knee, human_joint: RightLeg, robot_body: right_knee_link}
+    - {upstream_keypoint: L_Ankle, human_joint: LeftFoot, robot_body: left_ankle_roll_link}
+    - {upstream_keypoint: R_Ankle, human_joint: RightFoot, robot_body: right_ankle_roll_link}
+    - {upstream_keypoint: L_Elbow, human_joint: LeftForeArm, robot_body: left_elbow_link}
+    - {upstream_keypoint: R_Elbow, human_joint: RightForeArm, robot_body: right_elbow_link}
+    - {upstream_keypoint: L_Wrist, human_joint: LeftHand, robot_body: left_wrist_yaw_link}
+    - {upstream_keypoint: R_Wrist, human_joint: RightHand, robot_body: right_wrist_yaw_link}
+    - {upstream_keypoint: L_Shoulder, human_joint: LeftArm, robot_body: left_shoulder_pitch_link}
+    - {upstream_keypoint: R_Shoulder, human_joint: RightArm, robot_body: right_shoulder_pitch_link}
+  deviations:
+    - The upstream v2.3 entry point accepts AMASS/SMPL-X, not LAFAN1; this adapter supplies the same 14 semantic world-frame targets from the frozen canonical LAFAN package.
+    - Canonical LAFAN joint frames are not asserted to be SMPL-X segment frames; the port therefore sets the upstream 1e-4 orientation cost to zero and reports this explicit adapter intervention.
+    - The wrapper loads the official G1 MJCF directly and omits viewer-only mocap marker bodies and cameras.
+    - MuJoCo root quaternion input is explicitly wxyz; the upstream initialization assigns Poselib xyzw directly, while its output conversion treats MuJoCo qpos as wxyz.
+    - Official post-retarget lowest-height alignment is represented by an equivalent root-z shift in canonical qpos.

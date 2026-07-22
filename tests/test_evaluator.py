@@ -4,8 +4,11 @@ import numpy as np
 import pytest
 
 from retargeting_comparison.calibration import (
+    COMMON_SCALE_LANDMARKS,
+    EVALUATOR_SCHEMA_VERSION,
     build_evaluator_protocol,
     human_heading_yaw,
+    shared_landmark_least_squares_calibration,
 )
 from retargeting_comparison.evaluator import HUMAN_SEMANTIC_JOINTS, evaluate_motion
 from retargeting_comparison.robot_model import CanonicalRobotModel, default_robot_scene
@@ -68,8 +71,10 @@ def test_matched_motion_has_zero_fidelity_and_temporal_error() -> None:
     assert np.allclose(table.joint_velocity_rms_rad_s, 0.0)
     assert np.allclose(table.pose_jump_rms_m, 0.0)
     assert summary["completion_ratio"] == 1.0
-    assert summary["evaluator_schema_version"] == 2
+    assert summary["evaluator_schema_version"] == EVALUATOR_SCHEMA_VERSION
     assert summary["common_static_scale"] == pytest.approx(1.0)
+    assert summary["common_local_body_scale"] == pytest.approx(1.0)
+    assert summary["common_root_displacement_scale"] == pytest.approx(1.0)
 
 
 def test_heading_does_not_depend_on_bvh_root_quaternion_axes() -> None:
@@ -88,6 +93,28 @@ def test_common_scale_uses_neutral_robot_not_a_method_output_pose() -> None:
     motion.qpos[:, 7] = 0.5
     _, summary = evaluate_motion(human, motion, robot, protocol)
     assert summary["common_static_scale"] == pytest.approx(expected)
+    assert (
+        protocol["scale"]["diagnostics"]["head_to_toe_role"]
+        == "diagnostic_only_not_common_policy"
+    )
+    assert protocol["scale"]["common_local_body_scale"] == pytest.approx(
+        protocol["scale"]["least_squares_numerator_m2"]
+        / protocol["scale"]["least_squares_denominator_m2"]
+    )
+
+
+def test_common_scale_is_registered_closed_form_landmark_least_squares() -> None:
+    robot = CanonicalRobotModel(default_robot_scene())
+    human, _ = _matched_pair(robot)
+    fitted = shared_landmark_least_squares_calibration(human, robot)
+    assert fitted["value"] == pytest.approx(1.0)
+    assert fitted["value"] == pytest.approx(
+        fitted["numerator_m2"] / fitted["denominator_m2"]
+    )
+    assert fitted["source_landmarks"] == [
+        source for source, _, _ in COMMON_SCALE_LANDMARKS
+    ]
+    assert len(fitted["weights"]) == len(COMMON_SCALE_LANDMARKS) == 11
 
 
 def test_synthetic_joint_limit_and_invalid_frame_are_artifacts() -> None:

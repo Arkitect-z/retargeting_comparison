@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import mujoco
@@ -30,6 +32,15 @@ SEMANTIC_BODIES = {
     "right_toe": "right_foot_contact_point",
 }
 
+# ``head`` is a site in the canonical Holosoma model rather than a body.  Keep
+# the body mapping public because several analysis paths deliberately iterate
+# only articulated bodies, and expose the complete frame contract separately.
+SEMANTIC_SITES = {"head": "mid360"}
+SEMANTIC_FRAMES = {
+    **{semantic: ("body", name) for semantic, name in SEMANTIC_BODIES.items()},
+    **{semantic: ("site", name) for semantic, name in SEMANTIC_SITES.items()},
+}
+
 
 class CanonicalRobotModel:
     def __init__(self, xml_path: str | Path):
@@ -44,12 +55,24 @@ class CanonicalRobotModel:
         )
         if joint_names != G1_JOINT_NAMES:
             raise ValueError("Canonical G1 joint order differs from the frozen 29-DoF contract")
+        self.joint_names = joint_names
+        self.joint_order_sha256 = hashlib.sha256(
+            json.dumps(joint_names, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
         self.body_ids = {
             semantic: mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, body)
             for semantic, body in SEMANTIC_BODIES.items()
         }
         if any(value < 0 for value in self.body_ids.values()):
             raise ValueError("Canonical model is missing a semantic evaluation body")
+        self.site_ids = {
+            semantic: mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_SITE, site
+            )
+            for semantic, site in SEMANTIC_SITES.items()
+        }
+        if any(value < 0 for value in self.site_ids.values()):
+            raise ValueError("Canonical model is missing a semantic evaluation site")
         self.floor_geom_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_GEOM, "floor"
         )
@@ -67,10 +90,11 @@ class CanonicalRobotModel:
         positions = {
             name: self.data.xpos[index].copy() for name, index in self.body_ids.items()
         }
-        torso = self.body_ids["torso"]
-        torso_rotation = self.data.xmat[torso].reshape(3, 3)
-        positions["head"] = positions["torso"] + torso_rotation @ np.asarray(
-            [0.0, 0.0, 0.35]
+        positions.update(
+            {
+                name: self.data.site_xpos[index].copy()
+                for name, index in self.site_ids.items()
+            }
         )
         return positions
 
@@ -113,4 +137,3 @@ def default_robot_scene(repo_root: str | Path = ".") -> Path:
         / "scenes"
         / "scene_g1_29dof_wbt_plane.xml"
     )
-

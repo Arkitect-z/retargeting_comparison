@@ -4,11 +4,17 @@
   const DATA = JSON.parse(document.getElementById("rtcmp-data").textContent);
   const NS = "http://www.w3.org/2000/svg";
   const METHODS = DATA.operating_points;
+  const REFERENCES = DATA.external_references;
+  const TRAJECTORIES = DATA.trajectory_series;
   const METHOD_META = {
     "sparse-neutral": { label: "Sparse", short: "SPARSE", color: "#f17842", description: "Minimal root, hand, and foot tasks; neutral initialization." },
     dense: { label: "Dense", short: "DENSE", color: "#1f9e93", description: "Controlled Mink baseline with expanded whole-body targets." },
     gmr: { label: "GMR", short: "GMR", color: "#e9b949", description: "Official LAFAN-to-G1 generalized motion retargeting path." },
     omniretarget: { label: "OmniRetarget", short: "OMNI", color: "#8575ef", description: "Official Holosoma LAFAN-to-G1 whole-body path." },
+    holosoma: { label: "OmniRetarget", short: "OMNI", color: "#8575ef", description: "Official Holosoma LAFAN-to-G1 whole-body path." },
+    "protomotions-v2.3": { label: "ProtoMotions v2.3", short: "PROTO v2", color: "#54a24b", description: "Sequential Mink retargeter port using the public v2.3 tasks, costs, scale, and solver; not PHC." },
+    "protomotions-v3": { label: "ProtoMotions v3", short: "PROTO v3", color: "#3dbfab", description: "Published trajectory-wide modified-PyRoki formulation." },
+    "unitree-reference": { label: "Unitree-attributed reference", short: "REFERENCE", color: "#222222", description: "Precomputed external corpus; untimed and not verified as ground truth or an upper bound." },
   };
   const METRICS = {
     rf_kpe_all_mean_m: { label: "RF-KPE all", unit: "m", digits: 4 },
@@ -123,6 +129,17 @@
     });
   }
 
+  function initVerdict() {
+    const decision = String(DATA.decision || "UNKNOWN");
+    $("#verdict-title").textContent = decision === "GO WITH CHANGES" ? "GO" : decision;
+    $("#verdict-subtitle").textContent = decision === "GO"
+      ? "STAGE 1 COMPLETE"
+      : decision === "GO WITH CHANGES" ? "WITH CHANGES" : "GATE CLOSED";
+    $("#verdict-copy").textContent = decision === "GO"
+      ? "Expanded Stage 1 passed its frozen acceptance contract. Conclusions remain Pilot-level; Stage 2 is authorized only inside the 48-hour / 200-GB gate."
+      : "The frozen validation manifest contains at least one unmet Stage 1 acceptance condition.";
+  }
+
   function initScrollNarrative() {
     const progress = $("#reading-progress-bar");
     const chapters = $$(".chapter[id]");
@@ -159,7 +176,8 @@
     const stats = [
       [DATA.pilot.num_frames, "frames", "frozen source"],
       [format(DATA.pilot.duration_s, 2), "seconds", "at 30 fps"],
-      [DATA.core.length, "legacy operating points", "revised scope incomplete"],
+      [DATA.core.length, "operating points", "all 600 frames"],
+      [DATA.reference.length, "external reference", "untimed · separate role"],
       [new Set(DATA.interaction.map((row) => row.case)).size, "interaction cases", "Full + No-Hard"],
       [`${checks.filter(Boolean).length}/${checks.length}`, "acceptance checks", "all passed"],
     ];
@@ -172,6 +190,14 @@
     const ledger = $("#method-ledger");
     METHODS.forEach((method) => {
       const card = htmlNode("article", "method-card");
+      card.style.cssText = methodStyle(method);
+      const top = htmlNode("div", "method-card-top");
+      top.append(htmlNode("strong", "", METHOD_META[method].label), htmlNode("i", "method-swatch"));
+      card.append(top, htmlNode("p", "", METHOD_META[method].description));
+      ledger.append(card);
+    });
+    REFERENCES.forEach((method) => {
+      const card = htmlNode("article", "method-card reference-method");
       card.style.cssText = methodStyle(method);
       const top = htmlNode("div", "method-card-top");
       top.append(htmlNode("strong", "", METHOD_META[method].label), htmlNode("i", "method-swatch"));
@@ -273,7 +299,177 @@
     renderFrontier();
   }
 
-  const timelineState = { metric: "rf_kpe_all_m", active: new Set(METHODS), frame: 0, playing: false, animation: null, started: 0, startFrame: 0 };
+  const SCALE_METHOD_KEY = {
+    gmr: "gmr",
+    omniretarget: "omniretarget",
+    protomotions_v2_3_mink: "protomotions-v2.3",
+    protomotions_v3: "protomotions-v3",
+  };
+  let scaleMetric = "root_translation_common_scale_mean_m";
+
+  function formalScaleRows() {
+    return DATA.scale_summary.filter((row) => row.experiment_role === "native_response_fixed_canonical_contact" && SCALE_METHOD_KEY[row.method]);
+  }
+
+  function scaleMetricMeta() {
+    if (scaleMetric === "artifact_rate") return { label: "Artifact rate", unit: "%", digits: 1, factor: 100 };
+    if (scaleMetric === "rf_kpe_all_mean_m") return { label: "RF-KPE all", unit: "m", digits: 4, factor: 1 };
+    return { label: "Root error · common scale", unit: "m", digits: 4, factor: 1 };
+  }
+
+  function renderScale() {
+    const rows = formalScaleRows();
+    const svg = $("#scale-chart");
+    const tooltip = $("#scale-tooltip");
+    clear(svg);
+    const { width, height } = svgSize(svg, 500);
+    const margin = { top: 42, right: 45, bottom: 78, left: 78 };
+    const plotBottom = height - margin.bottom;
+    const labels = ["ROOT −5%", "NATIVE", "ROOT +5%", "LOCAL −5%", "NATIVE", "LOCAL +5%"];
+    const variants = ["root_minus_5", "native", "root_plus_5", "local_minus_5", "native", "local_plus_5"];
+    const x = linear(0, labels.length - 1, margin.left, width - margin.right);
+    const meta = scaleMetricMeta();
+    const values = rows.map((row) => Number(row[scaleMetric]) * meta.factor).filter(Number.isFinite);
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    const pad = Math.max((high - low) * .18, meta.factor === 100 ? 1 : .005);
+    const yMin = Math.max(0, low - pad);
+    const yMax = high + pad;
+    const y = linear(yMin, yMax, plotBottom, margin.top);
+    niceTicks(yMin, yMax, 6).forEach((tick) => {
+      const py = y(tick);
+      svg.append(svgNode("line", { class: "grid-line", x1: margin.left, x2: width-margin.right, y1: py, y2: py }));
+      svg.append(svgNode("text", { x: margin.left-12, y: py+4, "text-anchor": "end", fill: "#687080", "font-size": 9, "font-family": "monospace" }, tick.toFixed(meta.factor === 100 ? 0 : 3)));
+    });
+    labels.forEach((label, index) => {
+      svg.append(svgNode("text", { x: x(index), y: plotBottom+25, "text-anchor": "middle", fill: "#687080", "font-size": 8, "font-weight": 800 }, label));
+    });
+    svg.append(svgNode("line", { x1: x(2.5), x2: x(2.5), y1: margin.top, y2: plotBottom, stroke: "rgba(104,112,128,.4)", "stroke-dasharray": "4 5" }));
+    svg.append(svgNode("text", { class: "axis-label", x: 18, y: (margin.top+plotBottom)/2, transform: `rotate(-90 18 ${(margin.top+plotBottom)/2})`, "text-anchor": "middle" }, `${meta.label.toUpperCase()} (${meta.unit})`));
+
+    Object.entries(SCALE_METHOD_KEY).forEach(([rawMethod, method], methodIndex) => {
+      const byVariant = Object.fromEntries(rows.filter((row) => row.method === rawMethod).map((row) => [row.variant, row]));
+      const points = variants.map((variant, index) => ({ row: byVariant[variant], index })).filter((item) => item.row);
+      [[0,1,2],[3,4,5]].forEach((indices, segmentIndex) => {
+        const selected = points.filter((item) => indices.includes(item.index));
+        const d = selected.map((item, index) => `${index ? "L" : "M"}${x(item.index)},${y(Number(item.row[scaleMetric])*meta.factor)}`).join(" ");
+        svg.append(svgNode("path", { class: "line-path", d, stroke: METHOD_META[method].color, "stroke-dasharray": segmentIndex ? "7 5" : "none", opacity: .82 }));
+      });
+      points.forEach(({ row, index }) => {
+        const value = Number(row[scaleMetric]) * meta.factor;
+        const circle = svgNode("circle", { class: "data-point", cx: x(index), cy: y(value), r: 6.5, fill: METHOD_META[method].color, stroke: "#fff", "stroke-width": 1.4 });
+        const popup = (event) => showTooltip(tooltip, event, `<strong>${METHOD_META[method].label}</strong><div class="tooltip-grid"><span>Variant</span><b>${labels[index]}</b><span>${meta.label}</span><b>${format(value, meta.digits)} ${meta.unit}</b></div>`);
+        circle.addEventListener("pointerenter", popup); circle.addEventListener("pointermove", popup); circle.addEventListener("pointerleave", () => hideTooltip(tooltip));
+        svg.append(circle);
+      });
+      const labelRow = byVariant.local_plus_5 || byVariant.root_plus_5;
+      if (labelRow) svg.append(svgNode("text", { class: "point-label", x: x(5)+9, y: y(Number(labelRow[scaleMetric])*meta.factor)+4, fill: METHOD_META[method].color }, METHOD_META[method].short));
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const paths = [...svg.querySelectorAll(".line-path")].slice(methodIndex*2, methodIndex*2+2);
+        paths.forEach((path) => path.animate([{ opacity: 0 }, { opacity: .82 }], { duration: 500, delay: methodIndex*90, fill: "both" }));
+      }
+    });
+  }
+
+  function initScale() {
+    const controls = $("#scale-metric");
+    controls.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-value]");
+      if (!button) return;
+      scaleMetric = button.dataset.value;
+      setActiveButton(controls, scaleMetric);
+      renderScale();
+    });
+    const transplant = DATA.scale_summary.filter((row) => row.experiment_role === "controlled_policy");
+    const rootValues = transplant.map((row) => Number(row.root_translation_common_scale_mean_m));
+    const changed = DATA.rank_stability.filter((row) => row.rank_changed === true || String(row.rank_changed).toLowerCase() === "true").length;
+    const contact = DATA.contact_robustness.map((row) => Math.abs(Number(row.artifact_rate_native_recomputed_minus_fixed)));
+    const readout = $("#scale-readout");
+    [
+      ["CONTROLLED POLICY SPREAD", `${format(Math.max(...rootValues)-Math.min(...rootValues), 4)} m`, "same Dense solver; policy only"],
+      ["RANK CELLS CHANGED", String(changed), "across preregistered metrics × variants"],
+      ["HOLOSOMA CONTACT ROBUSTNESS", pct(Math.max(...contact), 1), "max artifact-rate delta"],
+      ["ACTOR SHAPE", "2 / 4 consume β", "GMR + Holosoma; Proto v2/v3 fixed"],
+    ].forEach(([label, value, note]) => {
+      const card = htmlNode("article"); card.append(htmlNode("span", "", label), htmlNode("strong", "", value), htmlNode("small", "", note)); readout.append(card);
+    });
+    const rootSlopes = DATA.scale_slopes.filter((row) => row.factor === "root" && row.metric === "root_translation_common_scale_mean_m");
+    const most = rootSlopes.reduce((best, row) => Math.abs(Number(row.elasticity_at_native)) > Math.abs(Number(best.elasticity_at_native)) ? row : best);
+    const findings = [
+      ["CAUSAL SEPARATION", `${format(Math.max(...rootValues)-Math.min(...rootValues), 3)} m`, "Changing only target policy in one solver reproduces a large root-error gap."],
+      ["MOST ROOT-SENSITIVE", METHOD_META[SCALE_METHOD_KEY[most.method]].label, `Elasticity ${format(most.elasticity_at_native, 2)} at the native policy.`],
+      ["CONTACT IS A SECOND FACTOR", `${format(Math.max(...contact)*100, 1)} pp`, "Holosoma fixed-label and recomputed-label arms remain separate."],
+    ];
+    const grid = $("#scale-findings");
+    findings.forEach(([label, value, note]) => { const card = htmlNode("article", "finding reveal"); card.append(htmlNode("span", "", label), htmlNode("strong", "", value), htmlNode("p", "", note)); grid.append(card); });
+    renderScale();
+  }
+
+  let referenceMetric = "root_translation_common_scale_mean_m";
+  function renderReference() {
+    const direct = referenceMetric.startsWith("direct_");
+    const rows = direct
+      ? DATA.reference_comparison
+          .filter((row) => row.metric === referenceMetric)
+          .map((row) => ({ label: row.key, [referenceMetric]: Number(row.method_value) }))
+      : [...DATA.core, ...DATA.reference];
+    const svg = $("#reference-chart");
+    clear(svg);
+    const { width, height } = svgSize(svg, 490);
+    if (!rows.length) {
+      svg.append(svgNode("text", { x: width/2, y: 245, "text-anchor":"middle", fill:"#687080", "font-size":12 }, "Direct reference evidence is not available."));
+      return;
+    }
+    const margin = { top: 35, right: 25, bottom: 125, left: 68 };
+    const plotBottom = height-margin.bottom;
+    const values = rows.map((row) => Number(row[referenceMetric]));
+    const factor = referenceMetric === "artifact_rate" ? 100 : 1;
+    const max = Math.max(...values)*factor*1.16 || 1;
+    const y = linear(0, max, plotBottom, margin.top);
+    const step = (width-margin.left-margin.right)/rows.length;
+    niceTicks(0, max, 5).forEach((tick) => {
+      const py = y(tick); svg.append(svgNode("line", { class: "grid-line", x1: margin.left, x2: width-margin.right, y1: py, y2: py }));
+      svg.append(svgNode("text", { x: margin.left-10, y: py+4, "text-anchor":"end", fill:"#687080", "font-size":9, "font-family":"monospace" }, tick.toFixed(factor===100 ? 0 : 3)));
+    });
+    rows.forEach((row, index) => {
+      const key = row.label;
+      const value = Number(row[referenceMetric])*factor;
+      const px = margin.left + step*(index+.5);
+      const reference = REFERENCES.includes(key);
+      svg.append(svgNode("rect", { x:px-step*.30, y:y(value), width:step*.60, height:plotBottom-y(value), rx:4, fill:METHOD_META[key].color, opacity:reference ? 1 : .78, stroke:reference ? "#fff" : "none", "stroke-width":2 }));
+      svg.append(svgNode("text", { x:px, y:plotBottom+18, transform:`rotate(42 ${px} ${plotBottom+18})`, "text-anchor":"start", fill:"#4f5665", "font-size":9, "font-weight":reference ? 900 : 700 }, METHOD_META[key].short));
+      svg.append(svgNode("text", { x:px, y:y(value)-7, "text-anchor":"middle", fill:METHOD_META[key].color, "font-size":8, "font-family":"monospace", "font-weight":800 }, factor===100 ? `${format(value,1)}%` : format(value,3)));
+    });
+    const label = referenceMetric === "artifact_rate"
+      ? "COMMON-EVALUATOR DIAGNOSTIC RATE (%)"
+      : direct
+        ? `${titleCase(referenceMetric.replace(/^direct_/, ""))} TO EXTERNAL TRAJECTORY (LOWER IS CLOSER, NOT ACCURACY)`
+        : `${METRICS[referenceMetric]?.label || titleCase(referenceMetric)} (LOWER IS BETTER)`;
+    svg.append(svgNode("text", { class:"axis-label", x:18, y:(margin.top+plotBottom)/2, transform:`rotate(-90 18 ${(margin.top+plotBottom)/2})`, "text-anchor":"middle" }, label));
+  }
+
+  function initReference() {
+    const controls = $("#reference-metric");
+    controls.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-value]"); if (!button) return;
+      referenceMetric = button.dataset.value; setActiveButton(controls, referenceMetric); renderReference();
+    });
+    const row = DATA.reference[0];
+    const provenance = DATA.reference_provenance;
+    const ledger = $("#reference-ledger");
+    [
+      ["ROLE", "External reference", "Untimed; excluded from the speed frontier."],
+      ["PILOT COORDINATE VIEW", "Rigid Rz(−π/2)", "No scale, translation, grounding, or resampling was applied."],
+      ["TIMELINE ALIGNMENT", "Frame index only", "The reference declares nominal 30 Hz; it is not claimed to share the source's exact timestamps."],
+      ["ROOT ERROR", `${format(row.root_translation_common_scale_mean_m,4)} m`, "Strong root-path agreement under common scale."],
+      ["RF-KPE ALL", `${format(row.rf_kpe_all_mean_m,4)} m`, "Similar morphology-limited root-frame error to several methods."],
+      ["PROVENANCE RECORDS", String(provenance.length), "Pinned revision and uploader statements remain linked in the audit."],
+      ["CLAIM LIMIT", "Not ground truth", "Generation details are insufficient for an official/best-quality claim."],
+    ].forEach(([label,value,note]) => { const card=htmlNode("article"); card.append(htmlNode("span","",label),htmlNode("strong","",value),htmlNode("p","",note)); ledger.append(card); });
+    renderReference();
+  }
+
+  const timelineState = { metric: "rf_kpe_all_m", active: new Set(TRAJECTORIES), frame: 0, playing: false, animation: null, started: 0, startFrame: 0 };
   function timelineYDomain() {
     const values = [];
     timelineState.active.forEach((method) => values.push(...DATA.frame_series[method][timelineState.metric].map(Number)));
@@ -284,8 +480,8 @@
   function renderTimeline() {
     const svg = $("#timeline-chart");
     clear(svg);
-    const { width, height } = svgSize(svg, 430);
-    const margin = { top: 25, right: 28, bottom: 88, left: 65 };
+    const { width, height } = svgSize(svg, 560);
+    const margin = { top: 25, right: 28, bottom: 150, left: 65 };
     const plotBottom = height - margin.bottom;
     const x = linear(0, DATA.pilot.num_frames - 1, margin.left, width - margin.right);
     const yMax = timelineYDomain();
@@ -303,19 +499,21 @@
     axis.append(svgNode("text", { class: "axis-label", x: 18, y: (margin.top + plotBottom) / 2, transform: `rotate(-90 18 ${(margin.top + plotBottom) / 2})`, "text-anchor": "middle" }, `${METRICS[timelineState.metric].label.toUpperCase()} (${METRICS[timelineState.metric].unit})`));
     svg.append(axis);
 
-    const artifactStart = plotBottom + 38;
-    METHODS.forEach((method, methodIndex) => {
+    const artifactStart = plotBottom + 42;
+    TRAJECTORIES.forEach((method, methodIndex) => {
       if (!timelineState.active.has(method)) return;
       const values = DATA.frame_series[method][timelineState.metric].map(Number);
       svg.append(svgNode("path", { class: "line-path", d: linePath(values, x, y), stroke: METHOD_META[method].color, opacity: .9 }));
       const rowY = artifactStart + methodIndex * 9;
       svg.append(svgNode("text", { x: margin.left - 8, y: rowY + 4, fill: METHOD_META[method].color, "text-anchor": "end", "font-size": 7, "font-weight": 800 }, METHOD_META[method].short.slice(0, 3)));
-      DATA.frame_series[method].artifact.forEach((flag, frame) => {
-        if (flag) svg.append(svgNode("rect", { x: x(frame), y: rowY, width: Math.max(1.3, (width - margin.left - margin.right) / 600), height: 5, fill: METHOD_META[method].color, opacity: .65 }));
-      });
+      if (!REFERENCES.includes(method)) {
+        DATA.frame_series[method].artifact.forEach((flag, frame) => {
+          if (flag) svg.append(svgNode("rect", { x: x(frame), y: rowY, width: Math.max(1.3, (width - margin.left - margin.right) / 600), height: 5, fill: METHOD_META[method].color, opacity: .65 }));
+        });
+      }
     });
     svg.append(svgNode("text", { class: "axis-label", x: margin.left, y: artifactStart - 8 }, "CAUSE-TRIGGERED FRAME FLAGS BY METHOD"));
-    const head = svgNode("line", { id: "timeline-playhead", class: "playhead", x1: x(timelineState.frame), x2: x(timelineState.frame), y1: margin.top, y2: plotBottom + 67 });
+    const head = svgNode("line", { id: "timeline-playhead", class: "playhead", x1: x(timelineState.frame), x2: x(timelineState.frame), y1: margin.top, y2: plotBottom + 126 });
     svg.append(head);
     svg.dataset.plotLeft = margin.left;
     svg.dataset.plotRight = width - margin.right;
@@ -337,7 +535,7 @@
     updateTimelineFrame(frame);
     const rows = [...timelineState.active].map((method) => {
       const cause = DATA.frame_series[method].artifact_causes[frame];
-      const suffix = cause && cause !== "none" ? ` · ${cause}` : "";
+      const suffix = !REFERENCES.includes(method) && cause && cause !== "none" ? ` · ${cause}` : "";
       return `<span>${METHOD_META[method].short}${suffix}</span><b>${format(DATA.frame_series[method][timelineState.metric][frame], METRICS[timelineState.metric].digits)}</b>`;
     }).join("");
     showTooltip($("#timeline-tooltip"), event, `<strong>Frame ${String(frame).padStart(3,"0")} · ${(frame / Number(DATA.pilot.fps)).toFixed(2)} s</strong><div class="tooltip-grid">${rows}</div>`);
@@ -361,11 +559,11 @@
     $("#frame-time").textContent = `${(frame / Number(DATA.pilot.fps)).toFixed(2)} s`;
     const values = $("#frame-values");
     clear(values);
-    METHODS.filter((method) => timelineState.active.has(method)).forEach((method) => {
+    TRAJECTORIES.filter((method) => timelineState.active.has(method)).forEach((method) => {
       const card = htmlNode("div", "frame-value");
       card.style.cssText = methodStyle(method);
       const cause = DATA.frame_series[method].artifact_causes[frame];
-      const label = cause && cause !== "none" ? `${METHOD_META[method].short} · ${cause}` : METHOD_META[method].short;
+      const label = !REFERENCES.includes(method) && cause && cause !== "none" ? `${METHOD_META[method].short} · ${cause}` : METHOD_META[method].short;
       card.append(htmlNode("small", "", label), htmlNode("strong", "", `${format(DATA.frame_series[method][timelineState.metric][frame], METRICS[timelineState.metric].digits)} ${METRICS[timelineState.metric].unit}`));
       values.append(card);
     });
@@ -390,7 +588,7 @@
 
   function initTimeline() {
     const toggles = $("#timeline-methods");
-    METHODS.forEach((method) => {
+    TRAJECTORIES.forEach((method) => {
       const button = htmlNode("button", "method-toggle active", METHOD_META[method].short);
       button.type = "button";
       button.dataset.method = method;
@@ -658,17 +856,22 @@
 
   function initBudget() {
     const projection = DATA.stage2_projection;
-    const total = Number(projection.safe_projected_wall_hours_serial);
-    const budget = Number(projection.wall_budget_hours);
+    const total = Number(projection.safe_projected_wall_hours ?? projection.safe_projected_wall_hours_serial);
+    const budget = Number(projection.wall_limit_hours ?? projection.wall_budget_hours);
+    const storage = Number(projection.safe_projected_retained_gb ?? projection.safe_projected_storage_gb);
     $("#budget-hours").textContent = `${format(total, 2)} h`;
-    $(".budget-verdict strong").textContent = `+${format(total - budget, 2)} h`;
-    $("#storage-value").textContent = `${format(projection.safe_projected_storage_gb, 2)} GB`;
+    $(".budget-verdict strong").textContent = total <= budget ? `${format(budget-total, 2)} h margin` : `+${format(total-budget, 2)} h`;
+    $(".budget-verdict strong").style.color = total <= budget ? "var(--success)" : "var(--danger)";
+    $("#storage-value").textContent = `${format(storage, 2)} GB`;
     const track = $("#budget-track");
     const max = Math.max(total * 1.03, budget * 1.12);
     DATA.stage2_projection_rows.forEach((row) => {
+      const method = row.method;
+      const meta = METHOD_META[method] || { label: method, color: "#687080" };
+      const hours = Number(row.safe_projected_wall_hours ?? row.projected_wall_hours ?? 0);
       const segment = htmlNode("div", "budget-segment");
-      segment.style.cssText = `${methodStyle(row.method)};width:${Number(row.safe_projected_wall_hours) / max * 100}%`;
-      segment.title = `${METHOD_META[row.method].label}: ${format(row.safe_projected_wall_hours, 2)} h`;
+      segment.style.cssText = `--method-color:${meta.color};width:${hours / max * 100}%`;
+      segment.title = `${meta.label}: ${format(hours, 2)} h`;
       track.append(segment);
     });
     const line = htmlNode("div", "budget-limit");
@@ -676,8 +879,10 @@
     track.append(line);
     const legend = $("#budget-legend");
     DATA.stage2_projection_rows.forEach((row) => {
-      const item = htmlNode("span"); item.style.cssText = methodStyle(row.method);
-      item.append(htmlNode("i"), document.createTextNode(`${METHOD_META[row.method].label} · ${format(row.safe_projected_wall_hours, 2)} h`));
+      const meta = METHOD_META[row.method] || { label: row.method, color: "#687080" };
+      const hours = Number(row.safe_projected_wall_hours ?? row.projected_wall_hours ?? 0);
+      const item = htmlNode("span"); item.style.cssText = `--method-color:${meta.color}`;
+      item.append(htmlNode("i"), document.createTextNode(`${meta.label} · ${format(hours, 2)} h`));
       legend.append(item);
     });
     const slider = $("#worker-slider");
@@ -747,16 +952,19 @@
     window.addEventListener("resize", () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        renderFrontier(); renderTimeline(); renderSeedChart(); renderInteraction(); renderTiming();
+        renderFrontier(); renderScale(); renderReference(); renderTimeline(); renderSeedChart(); renderInteraction(); renderTiming();
       }, 150);
     });
   }
 
   function init() {
     initTheme();
+    initVerdict();
     initScrollNarrative();
     initDesign();
     initFrontier();
+    initScale();
+    initReference();
     initTimeline();
     initSeed();
     initInteraction();

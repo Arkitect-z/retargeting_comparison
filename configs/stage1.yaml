@@ -14,7 +14,7 @@ lafan_root: data/lafan1
 canonical_robot:
   upstream: https://github.com/amazon-far/holosoma.git
   commit: 5f48635a3624656a5f46a07df26d43187e59f855
-  xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.xml
+  xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml
   urdf: external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.urdf
 timing:
   cold_runs: 1
@@ -30,7 +30,7 @@ required_experiments:
   - native_pipeline_comparison
   - controlled_scale_policy_transplant
   - within_method_root_local_scale_response
-  - neutral_smplx_actor_shape_target_probe
+  - neutral_smplx_actor_shape_policy_formula_probe
 scale_policy_sensitivity_config: configs/scale_policy_sensitivity.yaml
 conditional_candidates:
   order: [soma_or_curobo]

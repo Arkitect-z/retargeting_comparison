@@ -39,6 +39,9 @@ REPORTS = (
     "INTERACTION_CASE_STUDY.md",
     "REPRODUCE_PILOT.md",
     "PRESENTATION.md",
+    "SCALE_POLICY_SENSITIVITY.md",
+    "UNITREE_REFERENCE_COMPARISON.md",
+    "STAGE1_REVIEW.md",
 )
 
 
@@ -226,6 +229,8 @@ def scale_diagnostics(root: Path, core: pd.DataFrame) -> pd.DataFrame:
     columns = [
         "label",
         "common_static_scale",
+        "common_local_body_scale",
+        "common_root_displacement_scale",
         "native_root_scale",
         "effective_root_xy_scale",
         "root_scale_bias_fraction",
@@ -268,15 +273,18 @@ def controlled_task_residuals(root: Path) -> pd.DataFrame:
         task_errors: dict[str, np.ndarray] = {}
         for spec in config["target_sets"][variant]:
             root_position = human.world_positions[:, 0]
-            scale = float(config["common"][f"position_scale_{spec['scale_group']}"])
-            scaled_root = (
-                root_position
-                * float(config["common"]["position_scale_root_torso_legs"])
-                + root_alignment
+            root_scale = float(config["common"]["root_displacement_scale"])
+            local_scale = float(config["common"]["local_body_scale"])
+            robot_anchor = (
+                human.world_positions[0, 0] * root_scale + root_alignment
             )
+            scaled_root = robot_anchor + (
+                root_position - human.world_positions[0, 0]
+            ) * root_scale
             target = scaled_root + (
-                human.world_positions[:, indices[spec["human_joint"]]] - root_position
-            ) * scale
+                human.world_positions[:, indices[spec["human_joint"]]]
+                - root_position
+            ) * local_scale
             actual = np.stack([frame[spec["semantic"]] for frame in robot_frames])
             task_errors[spec["semantic"]] = np.linalg.norm(actual - target, axis=1)
         root_error = task_errors["root"]
@@ -519,11 +527,11 @@ def build_figures(
         axis.bar(x - width / 2, data.native_root_scale, width, label="Declared native")
         axis.bar(x + width / 2, data.effective_root_xy_scale, width, label="Measured output")
         axis.axhline(
-            float(data.common_static_scale.iloc[0]),
+            float(data.common_root_displacement_scale.iloc[0]),
             color="black",
             linestyle="--",
             linewidth=1.2,
-            label="Common benchmark",
+            label="Common root-displacement gain",
         )
         axis.set_xticks(x, data.label)
         axis.set_ylabel("Root translation scale")
@@ -682,6 +690,8 @@ def build_markdown(
     scale_table = scales[
         [
             "common_static_scale",
+            "common_local_body_scale",
+            "common_root_displacement_scale",
             "native_root_scale",
             "effective_root_xy_scale",
             "root_translation_common_scale_mean_m",
@@ -767,7 +777,7 @@ the revised Stage 1 is not. ProtoMotions v2.3/v3, pre-solver policy capture,
 the controlled scale-policy transplant, and registered root/local sensitivity
 runs remain mandatory. The current decision is `NO-GO — work in progress`.
 
-This Stage 1 Pilot compares controlled Sparse and Dense Mink retargeting, official GMR, and official OmniRetarget/Holosoma on the source-only-selected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The original presentation made several methods look nearly identical because it mixed method-specific root scales with a method-dependent evaluator scale and used root-frame plots that intentionally remove global translation. Evaluator v2 fixes that confound without changing the sequence, methods, or thresholds: one neutral-G1/source landmark scale is frozen for all quality metrics, native scale policy and scale-invariant path shape are reported separately, and controlled baseline v3 uses that common scale, a geometry-derived rigid root anchor, and an explicit weak temporal cost.
+This Stage 1 Pilot compares controlled Sparse and Dense Mink retargeting, official GMR, and official OmniRetarget/Holosoma on the source-only-selected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The original presentation made several methods look nearly identical because it mixed method-specific root scales with a method-dependent evaluator scale and used root-frame plots that intentionally remove global translation. Evaluator v3 fixes that confound without changing the sequence or thresholds: one registered shared-landmark least-squares scale is frozen for local/body quality, root-displacement gain and root anchor are explicit separate parameters, native scale policy and scale-invariant path shape are reported separately, and controlled baseline v6 uses the canonical Holosoma G1 scene with an explicit weak temporal cost.
 
 ## Frozen design and scope
 
@@ -781,7 +791,7 @@ The legacy evidence contains one LAFAN Pilot, three Sparse seeds, four completed
 
 ## Scale audit: why root translation looked inconsistent
 
-The common benchmark scale is `{float(evaluator['scale']['common_static_scale']):.9f}`, obtained once from neutral G1 `head→mean(toes)` divided by source frame-0 `Head→mean(toes)`. It is not inferred from any method output. Controlled v3 additionally applies the single rigid translation `{np.asarray(evaluator['scale']['common_root_alignment_translation_m']).round(6).tolist()} m`, defined as neutral-G1 pelvis minus scaled source frame-0 pelvis. This anchor changes only world placement; it does not alter scale, root-path deltas, or RF-KPE. It removes the artificial ground penetration caused by placing G1's longer pelvis-to-foot chain at the scaled human pelvis height.
+The common local/body scale is `{float(evaluator['scale']['common_local_body_scale']):.9f}`, obtained by the registered root-relative, heading-aligned shared-semantic-landmark scalar least-squares fit. The separately frozen root-displacement gain is `{float(evaluator['scale']['common_root_displacement_scale']):.9f}`; both start at the same value but remain independent intervention parameters. The legacy `head→mean(toes)` ratio is `{float(evaluator['scale']['diagnostics']['head_to_toe_scale']):.9f}` and is diagnostic only. Controlled v6 additionally applies the rigid translation `{np.asarray(evaluator['scale']['common_root_alignment_translation_m']).round(6).tolist()} m`, defined as neutral-G1 pelvis minus root-scaled source frame-0 pelvis. This anchor changes only world placement; it does not alter scale, root-path deltas, or RF-KPE.
 
 {scale_table}
 
@@ -864,7 +874,7 @@ After the required 1.5× safety factor, the serial projection is {_fmt(projectio
         root / "EXECUTIVE_SUMMARY.md",
         f"""# Executive Summary
 
-The legacy four-core execution completes four operating points, three Sparse seeds, evaluator-v2 scale correction, controlled-baseline v3 root anchoring, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. Revised Stage 1 remains incomplete pending ProtoMotions v2.3/v3, pre-solver policy capture, controlled scale-policy transplantation, and registered root/local sensitivity runs. The fastest observed legacy operating point is `{fastest}` and the lowest RF-KPE-all is `{best_quality}` on this one Pilot only.
+The legacy four-core execution completes four operating points, three Sparse seeds, the earlier evaluator scale correction, controlled root anchoring, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. Revised Stage 1 remains incomplete pending corrected evaluator-v3/controlled-v6 reruns, ProtoMotions v2.3/v3, pre-solver policy capture, controlled scale-policy transplantation, and registered root/local sensitivity runs. The fastest observed legacy operating point is `{fastest}` and the lowest RF-KPE-all is `{best_quality}` on this one Pilot only.
 
 The apparent lack of visual separation was primarily a measurement-presentation issue: all outputs share G1 morphology, root-frame pose plots remove global trajectory, and the old root reference used inconsistent scales. The corrected report separates common-scale fidelity, native solver tracking, and scale-invariant path shape, and decomposes artifacts by cause.
 
@@ -893,7 +903,7 @@ ProtoMotions v2.3 is labelled `PHC-derived preprocessing/FK infrastructure + seq
         root / "SPARSE_IK_ANALYSIS.md",
         f"""# Sparse IK Analysis
 
-Sparse tracks root translation/yaw plus both wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. Both use the common scale `{float(evaluator['scale']['common_static_scale']):.9f}`, the same geometry-derived rigid root anchor, joint limits, sequential warm start, weak fixed-posture regularization, and the same explicit weak `q[t-1]` temporal cost. Sparse contains no torso/elbow/knee task, contact objective, or learned prior.
+Sparse tracks root translation/yaw plus both wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. Both use local/body scale `{float(evaluator['scale']['common_local_body_scale']):.9f}`, separately declared root-displacement gain `{float(evaluator['scale']['common_root_displacement_scale']):.9f}`, the same neutral-pelvis frame-0 anchor, canonical Holosoma G1 joint order/limits, sequential warm start, weak fixed-posture regularization, and the same explicit weak `q[t-1]` temporal cost. Sparse contains no torso/elbow/knee task, contact objective, or learned prior.
 
 {seeds.to_markdown(index=False, floatfmt='.5f')}
 
@@ -921,7 +931,7 @@ The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from 
 2. Run `rtcmp audit`, `rtcmp prepare-source`, `rtcmp validate-models`, and `rtcmp freeze-evaluator` before any formal method.
 3. Freeze the preprocessing-policy manifest and pre-solver target contract from `research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md` and `configs/scale_policy_sensitivity.yaml`.
 4. Run the legacy Sparse/Dense/GMR/OmniRetarget commands, then the required ProtoMotions v2.3 and v3 (`target_raw_frames=600`) adapters and full Pilot runs.
-5. Capture every native pre-solver target; run the controlled policy transplant, registered root/local ±5% variants, contact-label diagnostics, and neutral-SMPL-X actor-shape target probe.
+5. Capture every native pre-solver target; run the controlled policy transplant, registered root/local ±5% variants, contact-label diagnostics, and the hash-bound neutral-SMPL-X actor-shape policy formula probe (not runtime-constructor or ranking evidence).
 6. Run both variants of `rtcmp run-interaction` for box and climb.
 7. In conda env `vis`, rebuild all articulated-G1 views; then run `rtcmp build-report` and `rtcmp validate-stage1`. Validation must remain `NO-GO` while any revised requirement is absent.
 
@@ -950,7 +960,7 @@ Sparse and Dense v3 share robot, scale, rigid root anchor, solver, limits, initi
 
 ![Root scale policies](figures/root_scale_policies.svg)
 
-GMR uses `0.875`; Holosoma uses `0.7471`; evaluator v2 freezes one neutral-geometry scale for every method and reports native tracking separately.
+GMR uses `0.875`; Holosoma uses `0.7471`; evaluator v3 freezes one shared-landmark LS local/body scale plus a separately declared root gain for every method and reports native tracking separately.
 
 ## 6. Public methods
 
@@ -1026,6 +1036,11 @@ def artifact_manifest(root: Path) -> None:
     interactive_report = root / "INTERACTIVE_REPORT.html"
     if interactive_report.is_file():
         candidates.append(interactive_report)
+        delivery_manifest = interactive_report.with_suffix(
+            interactive_report.suffix + ".manifest.json"
+        )
+        if delivery_manifest.is_file():
+            candidates.append(delivery_manifest)
     output = root / "manifests" / "artifacts.csv"
     with output.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(
@@ -1047,20 +1062,29 @@ def artifact_manifest(root: Path) -> None:
 
 
 def build_report(repo_root: str | Path = ".") -> None:
-    root = Path(repo_root).resolve()
-    (root / "metrics").mkdir(exist_ok=True)
-    (root / "figures").mkdir(exist_ok=True)
-    core = evaluate_core(root)
-    scales = scale_diagnostics(root, core)
-    controlled_task_residuals(root)
-    _, timing = collect_timing(root, core)
-    _, seed_summary = sparse_seed_divergence(root)
-    interaction = collect_interaction(root)
-    projection = stage2_projection(root, timing)
-    build_figures(root, timing, seed_summary, interaction, scales)
-    build_markdown(root, core, timing, seed_summary, interaction, projection)
-    publish_manifests(root)
-    from .interactive_report import build_interactive_report
+    """Build the expanded six-method Stage 1 publication.
 
+    Legacy helper functions remain importable for audit compatibility, but the
+    public CLI must never silently rebuild the obsolete four-method report.
+    """
+
+    root = Path(repo_root).resolve()
+    from .stage1_publication import (
+        build_stage1_publication,
+        finalize_stage1_publication,
+    )
+
+    build_stage1_publication(root)
+    from .interactive_report import build_interactive_report
+    from .validation import validate_stage1
+
+    # Phase 1 is evidence-only and cannot issue GO.  Render a PENDING browser
+    # artifact so the independent validator can check report structure without
+    # consuming its own conclusion.  Phase 2 binds one fail-closed verdict to
+    # the immutable PENDING evidence ledger; final Markdown/HTML only consume
+    # that bound verdict.  There is deliberately no validate/render fixed point.
+    build_interactive_report(root, force_pending=True)
+    validate_stage1(root)
+    finalize_stage1_publication(root)
     build_interactive_report(root)
     artifact_manifest(root)

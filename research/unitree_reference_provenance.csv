@@ -1,0 +1,24 @@
+field,value,evidence,confidence,note
+classification,Unitree-attributed reference corpus,repository README and BSD license attribution,high,Not verified official ground truth
+repository,lvhaidong/LAFAN1_Retargeting_Dataset,Hugging Face dataset API,high,Uploader account is lvhaidong rather than a Unitree organization
+revision,ce1572906efe6157840e8474d5a0d7aa87481e74,Hugging Face dataset API,high,Frozen immutable revision
+pilot_file,g1/dance1_subject1.csv,Hugging Face revision file list,high,Same basename as frozen Pilot BVH
+pilot_sha256,e2a369e92e5ad076c5acffff7bce53157a0e6cd9e7e9f6a08dadfb1eb2928d8f,local SHA-256 of revision-pinned download,high,Raw CSV remains ignored and uncommitted
+pilot_rows,3945,revision-pinned CSV audit,high,"Pilot uses rows [0,600)"
+pilot_columns,36,dataset card plus revision-pinned CSV audit,high,7 root plus 29 G1 joints
+fps,30,dataset card,high,Original Pilot BVH parser reports 30.000300003 Hz so timestamps are not asserted bit-identical
+root_quaternion_source_order,xyzw,dataset card and upstream Pinocchio visualizer,high,Converted to canonical wxyz only in adapter
+joint_order,canonical G1 29 order,dataset card and CSV width,high,Names exactly match benchmark G1_JOINT_NAMES
+retargeting_algorithm,Interaction Mesh plus IK claimed,dataset card,medium,No code/config/commit for generation is supplied
+dynamics,not included,dataset card,high,Do not treat reference as dynamically executable ground truth
+owner_provenance_caveat,copied dataset with no method material,Hugging Face discussion 1 owner reply,high,Prevents verified-official or ground-truth designation
+derived_motion_license,CC-BY-NC-ND-4.0 claimed,dataset card,medium,Raw CSV is not redistributed
+repository_license,BSD-3-Clause copyright Unitree Robotics,repository LICENSE,high,Conflicts with card statement that code is MIT
+adapter_scale_ground_translation,none,local adapter code,high,Observed upstream policy is audited descriptively rather than corrected
+canonical_asset_contract,29-joint order/tree/origin/axis/limits identical,reference URDF versus canonical evaluator URDF audit,high,URDF byte hashes differ but actuated kinematic contracts match
+canonical_asset_cross_engine_fk,max position 4.731e-7 m and max rotation 1.456e-6 rad,Pinocchio-to-MuJoCo neutral plus 10 deterministic random configurations,high,Does not establish collision/inertial/actuator/dynamics equivalence
+holosoma_retargeter_asset_difference,max actuated-joint origin difference 0.019 m,reference URDF versus Holosoma retargeter default URDF audit,high,Four waist/shoulder joint origins differ from the canonical evaluator asset
+pilot_root_xy_policy,proper similarity scale 0.74001746 with approximately minus-y plus-x axis map,first 600 source/reference root positions,high,Descriptive fit only; generation configuration is unavailable
+pilot_root_z_policy,slope 0.69763967 plus 0.15715795 m intercept,first 600 source/reference root heights,high,Not the same transform as XY; likely includes grounding/IK but cause is unverified
+published_coordinate_view,right-handed Z-up with path axes approximately plus-90-degrees from benchmark canonical,upstream visualizer plus full 3945-frame path audit,high,Raw view is preserved for provenance
+canonical_coordinate_view,fixed active Rz(-pi/2) on root XYZ and orientation,local adapter and exact round-trip test,high,No fitted angle/translation/scale; formal quality view

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="Interactive Stage 1 scientific report for human-to-Unitree-G1 motion retargeting.">
+  <meta name="rtcmp-data-sha256" content="__RTCMP_DATA_SHA256__">
   <title>Human-to-G1 Retargeting · Interactive Stage 1 Report</title>
   <style>__RTCMP_INLINE_CSS__</style>
 </head>
@@ -31,7 +32,7 @@
       <div class="hero-copy reveal">
         <p class="eyebrow"><span>Scientific report</span><span>22 July 2026</span></p>
         <h1>When fewer constraints<br><em>move faster</em>—<br>but reveal more.</h1>
-        <p class="hero-deck">A controlled, source-frozen comparison of human-motion retargeting to the Unitree G1. Four operating points, one 20-second LAFAN1 Pilot, and two interaction ablations—reported without a composite score.</p>
+        <p class="hero-deck">A controlled, source-frozen comparison of human-motion retargeting to the Unitree G1. Six operating points, one external Unitree-attributed reference, one 20-second LAFAN1 Pilot, causal scale interventions, and two interaction ablations—reported without a composite score.</p>
         <div class="hero-actions">
           <a class="button primary" href="#frontier">Explore the evidence</a>
           <a class="button ghost" href="PILOT_REPORT.md">Read the Markdown report</a>
@@ -49,11 +50,11 @@
             <circle class="orbit-node node-two" cx="224" cy="176" r="7"></circle>
           </svg>
           <div class="verdict-center">
-            <strong id="verdict-title">GO</strong>
-            <span>WITH CHANGES</span>
+            <strong id="verdict-title">—</strong>
+            <span id="verdict-subtitle">VALIDATING</span>
           </div>
         </div>
-        <p>The legacy four-core Pilot is complete; revised Stage 1 remains NO-GO until ProtoMotions v2.3/v3 and the registered preprocessing/scale study finish.</p>
+        <p id="verdict-copy">The decision is loaded directly from the frozen Stage 1 validation manifest.</p>
         <a href="#budget">See the budget boundary <span aria-hidden="true">↓</span></a>
       </aside>
     </div>
@@ -62,7 +63,7 @@
       <div class="pipeline-label"><span>CONCEPTUAL PIPELINE</span><span>SCHEMATIC · NOT TO SCALE</span></div>
       <svg class="pipeline" viewBox="0 0 1200 200" role="img" aria-labelledby="pipeline-title pipeline-desc">
         <title id="pipeline-title">Human-to-G1 evaluation pipeline</title>
-        <desc id="pipeline-desc">A frozen source passes through canonicalization, four retargeting methods, and a common evaluator.</desc>
+        <desc id="pipeline-desc">A frozen source passes through canonicalization, six retargeting operating points plus an external reference, and a common evaluator.</desc>
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z"></path></marker>
           <filter id="soft-glow"><feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
@@ -74,10 +75,10 @@
         <g class="pipe-node canonical-node" transform="translate(330 55)"><rect width="140" height="90" rx="18"></rect><path d="M28 23v44M17 32h22M17 55h22"></path><text x="55" y="31">CANONICAL</text><text x="55" y="52">SOURCE</text><text x="55" y="72">HASHED</text></g>
         <g class="method-cluster" transform="translate(625 28)">
           <rect class="cluster-shell" width="215" height="144" rx="22"></rect>
-          <g transform="translate(16 16)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">SPARSE</text></g>
-          <g transform="translate(112 16)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">DENSE</text></g>
-          <g transform="translate(16 76)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">GMR</text></g>
-          <g transform="translate(112 76)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">OMNI</text></g>
+          <g transform="translate(16 16)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">6 METHODS</text></g>
+          <g transform="translate(112 16)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">1 REF</text></g>
+          <g transform="translate(16 76)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">SCALE ×5</text></g>
+          <g transform="translate(112 76)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">HASHED</text></g>
         </g>
         <g class="pipe-node evaluator-node" transform="translate(1020 55)"><rect width="130" height="90" rx="18"></rect><path d="M22 66 40 45l14 9 25-30 20 15"></path><text x="20" y="23">COMMON</text><text x="20" y="82">EVALUATOR</text></g>
         <circle class="data-pulse pulse-one" cx="155" cy="100" r="5"></circle>
@@ -90,26 +91,28 @@
   <nav class="chapter-rail" aria-label="Report chapters">
     <a href="#design" data-label="Design"><span>01</span></a>
     <a href="#frontier" data-label="Frontier"><span>02</span></a>
-    <a href="#frame-story" data-label="Motion"><span>03</span></a>
-    <a href="#sparse" data-label="Ambiguity"><span>04</span></a>
-    <a href="#interaction" data-label="Interaction"><span>05</span></a>
-    <a href="#timing" data-label="Timing"><span>06</span></a>
-    <a href="#budget" data-label="Decision"><span>07</span></a>
+    <a href="#scale" data-label="Scale"><span>03</span></a>
+    <a href="#reference" data-label="Reference"><span>04</span></a>
+    <a href="#frame-story" data-label="Motion"><span>05</span></a>
+    <a href="#sparse" data-label="Ambiguity"><span>06</span></a>
+    <a href="#interaction" data-label="Interaction"><span>07</span></a>
+    <a href="#timing" data-label="Timing"><span>08</span></a>
+    <a href="#budget" data-label="Decision"><span>09</span></a>
   </nav>
 
   <main id="main-content">
     <section id="design" class="chapter chapter-light" data-chapter="01 · Design">
       <div class="section-heading reveal">
         <p class="section-index">01 · EXPERIMENTAL DESIGN</p>
-        <h2>One source.<br>Four operating points.<br><em>No moving goalposts.</em></h2>
-        <p>The sequence was selected from source-only motion features before any retargeter ran. All outputs use the same 29-DoF G1 evaluator, the same coordinate contract, and an explicit completion threshold.</p>
+        <h2>One source.<br>Six operating points.<br><em>No moving goalposts.</em></h2>
+        <p>The sequence was selected from source-only motion features before any retargeter ran. All outputs use the same 29-DoF G1 evaluator, the same coordinate contract, and an explicit completion threshold. The precomputed reference is kept in a separate evidentiary role.</p>
       </div>
       <div class="stat-grid" id="design-stats" aria-label="Experiment summary statistics"></div>
       <div class="design-ledger reveal">
         <div class="ledger-copy">
           <p class="micro-label">CONTROLLED COMPARISON</p>
           <h3>Sparse and Dense differ only in their declared target set.</h3>
-          <p>Solver, limits, scaling, warm start, iteration budget, damping, posture regularization, and initialization are held constant. GMR and OmniRetarget run at frozen official commits through isolated adapters.</p>
+          <p>Solver, limits, scaling, warm start, iteration budget, damping, posture regularization, and initialization are held constant for Sparse/Dense. GMR, OmniRetarget, and ProtoMotions v3 retain frozen public formulations through isolated adapters. ProtoMotions v2.3 is explicitly a canonical-LAFAN benchmark port of its public G1 Mink tasks and solver, because upstream v2.3 does not publish a native LAFAN input path.</p>
         </div>
         <div class="method-legend" id="method-ledger"></div>
       </div>
@@ -141,9 +144,53 @@
       <div class="finding-grid" id="frontier-findings"></div>
     </section>
 
-    <section id="frame-story" class="chapter chapter-paper" data-chapter="03 · Motion">
+    <section id="scale" class="chapter chapter-light" data-chapter="03 · Scale">
       <div class="section-heading reveal">
-        <p class="section-index">03 · INSIDE THE MOTION</p>
+        <p class="section-index">03 · SCALE AS AN INTERVENTION</p>
+        <h2>Same person.<br>Same robot.<br><em>Different target policy.</em></h2>
+        <p>Robot morphology is fixed. The experiment perturbs root-path and local-landmark scale by ±5% before each native solver, while a same-solver Dense transplant isolates policy from optimizer choice.</p>
+      </div>
+      <div class="chart-shell reveal">
+        <div class="chart-toolbar">
+          <div class="segmented" id="scale-metric" role="group" aria-label="Select scale sensitivity metric">
+            <button type="button" data-value="root_translation_common_scale_mean_m" class="active">Root error</button>
+            <button type="button" data-value="rf_kpe_all_mean_m">RF-KPE</button>
+            <button type="button" data-value="artifact_rate">Artifact rate</button>
+          </div>
+          <div class="chart-key">Native solver response · fixed canonical contact labels</div>
+        </div>
+        <div class="chart-stage scale-stage"><svg id="scale-chart" role="img" aria-label="Native scale perturbation response by method"></svg><div class="tooltip" id="scale-tooltip" role="status"></div></div>
+        <div class="scale-readout" id="scale-readout"></div>
+        <p class="metric-footnote">The formal causal arm freezes canonical contact labels. Holosoma's separately reported native-contact recomputation is a robustness analysis, because changing labels changes more than scale.</p>
+      </div>
+      <div class="finding-grid" id="scale-findings"></div>
+    </section>
+
+    <section id="reference" class="chapter chapter-sand" data-chapter="04 · Reference">
+      <div class="section-heading reveal">
+        <p class="section-index">04 · EXTERNAL REFERENCE CORPUS</p>
+        <h2>A useful benchmark.<br><em>Not an oracle.</em></h2>
+        <p>The pinned Hugging Face corpus is attributed to Unitree and shares this Pilot's basename and 600 source-frame indices after one rigid coordinate conversion. Its nominal 30 Hz declaration is not the source's exact timestamp grid, and its uploader does not provide enough method provenance to establish official ground truth or a quality upper bound.</p>
+      </div>
+      <div class="reference-layout reveal">
+        <div class="chart-shell reference-chart-shell">
+          <div class="segmented" id="reference-metric" role="group" aria-label="Select external reference comparison metric">
+            <button type="button" data-value="root_translation_common_scale_mean_m" class="active">Root path</button>
+            <button type="button" data-value="rf_kpe_all_mean_m">RF-KPE</button>
+            <button type="button" data-value="direct_root_displacement_mean_m">Direct displacement</button>
+            <button type="button" data-value="direct_root_anchor_frame0_m">Frame-0 anchor</button>
+            <button type="button" data-value="direct_fk_root_frame_semantic_mean_m">Direct FK-RF</button>
+            <button type="button" data-value="artifact_rate">Evaluator artifacts</button>
+          </div>
+          <div class="chart-stage reference-stage"><svg id="reference-chart" role="img" aria-label="Methods and external reference metric comparison"></svg></div>
+        </div>
+        <aside class="reference-ledger" id="reference-ledger"></aside>
+      </div>
+    </section>
+
+    <section id="frame-story" class="chapter chapter-paper" data-chapter="05 · Motion">
+      <div class="section-heading reveal">
+        <p class="section-index">05 · INSIDE THE MOTION</p>
         <h2>Twenty seconds,<br><em>frame by frame.</em></h2>
         <p>Scrub the frozen sequence to see how error and artifacts evolve. The playhead is an interface animation over measured values—not a new simulation.</p>
       </div>
@@ -171,9 +218,9 @@
       </div>
     </section>
 
-    <section id="sparse" class="chapter chapter-cobalt" data-chapter="04 · Ambiguity">
+    <section id="sparse" class="chapter chapter-cobalt" data-chapter="06 · Ambiguity">
       <div class="section-heading inverse reveal">
-        <p class="section-index">04 · SPARSE AMBIGUITY</p>
+        <p class="section-index">06 · SPARSE AMBIGUITY</p>
         <h2>Same targets.<br>Different hidden poses.</h2>
         <p>Three deterministic initial postures expose how an underconstrained solve can preserve visible targets while diverging elsewhere in the robot body.</p>
       </div>
@@ -202,9 +249,9 @@
       </div>
     </section>
 
-    <section id="interaction" class="chapter chapter-light" data-chapter="05 · Interaction">
+    <section id="interaction" class="chapter chapter-light" data-chapter="07 · Interaction">
       <div class="section-heading reveal">
-        <p class="section-index">05 · INTERACTION ABLATION</p>
+        <p class="section-index">07 · INTERACTION ABLATION</p>
         <h2>What changes when<br><em>hard constraints unlock?</em></h2>
         <p>Full enables non-penetration and foot sticking. No-Hard disables only those two gates; joint limits, input, initialization, solver, and iteration budget remain fixed.</p>
       </div>
@@ -222,9 +269,9 @@
       </div>
     </section>
 
-    <section id="timing" class="chapter chapter-paper" data-chapter="06 · Timing">
+    <section id="timing" class="chapter chapter-paper" data-chapter="08 · Timing">
       <div class="section-heading reveal">
-        <p class="section-index">06 · TIMING PROTOCOL</p>
+        <p class="section-index">08 · TIMING PROTOCOL</p>
         <h2>Cold once.<br>Warm once.<br><em>Measure three times.</em></h2>
         <p>Initialization, import, and compile costs remain separate from steady-state RTF. Select a timing layer to inspect every recorded repetition.</p>
       </div>
@@ -240,15 +287,15 @@
       </div>
     </section>
 
-    <section id="budget" class="chapter chapter-sand" data-chapter="07 · Decision">
+    <section id="budget" class="chapter chapter-sand" data-chapter="09 · Decision">
       <div class="section-heading reveal">
-        <p class="section-index">07 · STAGE 2 GATE</p>
-        <h2>The evidence says<br><em>pause before scale.</em></h2>
-        <p>The frozen estimate includes steady RTF, measured startup and adapter overhead per sequence, observed retries, and a 1.5× safety factor.</p>
+        <p class="section-index">09 · STAGE 2 GATE</p>
+        <h2>Scale up only<br><em>inside the hard gate.</em></h2>
+        <p>The frozen estimate includes steady RTF, measured startup and adapter overhead per sequence, deterministic parallel scheduling, and a 1.5× safety factor. The user authorized Stage 2 only under 48 hours and 200 GB.</p>
       </div>
       <div class="budget-board reveal">
         <div class="budget-headline">
-          <div><span>PROJECTED SERIAL WALL TIME</span><strong id="budget-hours">—</strong></div>
+          <div><span>PROJECTED SAFE WALL TIME</span><strong id="budget-hours">—</strong></div>
           <div class="budget-verdict"><span>48 h limit</span><strong>—</strong></div>
         </div>
         <div class="budget-track" id="budget-track" aria-label="Projected method runtime against 48-hour budget"></div>
@@ -257,7 +304,7 @@
           <div>
             <span class="micro-label">ILLUSTRATIVE SCHEDULING WHAT-IF</span>
             <h3><span id="worker-count">1</span> idealized worker<span id="worker-plural"></span></h3>
-            <p>Simple division for planning only. It is not a measured scaling result, resource commitment, or Stage 2 authorization.</p>
+            <p>Simple division is shown only as a visual sensitivity aid. The immutable Stage 2 plan uses its deterministic worker-lane schedule and exact plan hash.</p>
           </div>
           <input id="worker-slider" type="range" min="1" max="4" value="1" step="1" aria-label="Idealized parallel worker count">
           <div class="what-if-result"><strong id="what-if-hours">—</strong><span id="what-if-status">loading evidence</span></div>
@@ -280,9 +327,11 @@
         <div class="evidence-list" id="evidence-list"></div>
         <aside class="evidence-links">
           <p class="micro-label">SOURCE TABLES</p>
-          <a href="metrics/core_summary.csv">Core summary <span>CSV ↗</span></a>
-          <a href="metrics/interaction_summary.csv">Interaction summary <span>CSV ↗</span></a>
-          <a href="metrics/timing_raw.csv">Raw timing <span>CSV ↗</span></a>
+          <a href="metrics/stage1_core_summary.csv">Six-method summary <span>CSV ↗</span></a>
+          <a href="metrics/stage1_reference_summary.csv">External reference <span>CSV ↗</span></a>
+          <a href="metrics/stage1_scale_policy_summary.csv">Scale interventions <span>CSV ↗</span></a>
+          <a href="metrics/stage1_interaction_summary.csv">Interaction summary <span>CSV ↗</span></a>
+          <a href="metrics/stage1_timing_raw.csv">Raw timing <span>CSV ↗</span></a>
           <a href="metrics/stage2_projection.csv">Stage 2 projection <span>CSV ↗</span></a>
           <a href="docs/RERUN_VISUALIZATION.md">Articulated G1 3D viewer <span>MD ↗</span></a>
           <a href="docs/STAGE1_COMPLETION_AUDIT.md">Completion audit <span>MD ↗</span></a>
@@ -294,8 +343,8 @@
 
     <section class="closing" data-chapter="Conclusion">
       <p class="section-index">CONCLUSION</p>
-      <h2>Proceed with the harness.<br><em>Change the scaling plan.</em></h2>
-      <p>This page preserves the legacy evidence while revised Stage 1 is in progress. Complete the required ProtoMotions v2.3/v3 runs, native/controlled preprocessing split, pre-solver target capture, and root/local scale sensitivity before recomputing the Stage 2 budget.</p>
+      <h2>Stage 1 is evidence.<br><em>Stage 2 tests generality.</em></h2>
+      <p>Six complete operating points, an explicitly delimited external reference, exact pre-solver target capture, causal scale interventions, repeated timing, and two interaction cases support a Pilot-level GO. Dataset-level ranking remains deliberately deferred to the budget-gated Stage 2 run.</p>
       <div class="closing-actions"><a class="button primary" href="GO_NO_GO.md">Read the decision memo</a><a class="button ghost" href="docs/RERUN_VISUALIZATION.md">Open the 3D viewer guide</a><a class="button ghost" href="REPRODUCE_PILOT.md">Reproduce the Pilot</a></div>
     </section>
   </main>

@@ -1,44 +1,157 @@
-schema_version: 2
-name: stage1-pilot-evaluator-v2
+schema_version: 3
+name: stage1-pilot-evaluator-v3
 source_sha256: 67e62e7e6e02cd54c8659fd1de9974032639e82948ebb86e2a8c82a060b7c6b5
 source_path: source/canonical_human/dance1_subject1_f000000_000600.npz
 robot_xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml
 robot_xml_sha256: 0555862e648ad9b4a1e4e773fa888a7ea6e3795c79b1ebfd7e36c3976615bb24
+robot_joint_order:
+- left_hip_pitch_joint
+- left_hip_roll_joint
+- left_hip_yaw_joint
+- left_knee_joint
+- left_ankle_pitch_joint
+- left_ankle_roll_joint
+- right_hip_pitch_joint
+- right_hip_roll_joint
+- right_hip_yaw_joint
+- right_knee_joint
+- right_ankle_pitch_joint
+- right_ankle_roll_joint
+- waist_yaw_joint
+- waist_roll_joint
+- waist_pitch_joint
+- left_shoulder_pitch_joint
+- left_shoulder_roll_joint
+- left_shoulder_yaw_joint
+- left_elbow_joint
+- left_wrist_roll_joint
+- left_wrist_pitch_joint
+- left_wrist_yaw_joint
+- right_shoulder_pitch_joint
+- right_shoulder_roll_joint
+- right_shoulder_yaw_joint
+- right_elbow_joint
+- right_wrist_roll_joint
+- right_wrist_pitch_joint
+- right_wrist_yaw_joint
+robot_joint_order_sha256: f45715da72ae31d80dbcf2d51ea642a2b2714c1be7cf2e8aaa126438857ab0cf
 heading:
   definition: z_up_cross_mean_left_to_right_hips_shoulders
   uses_bvh_root_quaternion: false
   robot_definition: canonical_qpos_root_x_axis_yaw
+timeline:
+  definition: canonical source timestamps; method declarations rounded to nominal
+    30 Hz are accepted within a frozen relative tolerance
+  source_fps: 30.000300003000028
+  nominal_fps: 30.0
+  accepted_declared_fps_relative_tolerance: 2.0e-05
+  temporal_metrics_use_source_fps: true
 scale:
-  definition: neutral_g1_head_to_mean_toe_over_source_frame0_head_to_mean_toe
+  definition: frame0_root_heading_aligned_shared_semantic_landmark_weighted_scalar_least_squares
   method_independent: true
   source_frame: 0
-  source_landmark_height_m: 1.6008235258444419
-  neutral_robot_landmark_height_m: 1.1878703570588376
-  common_static_scale: 0.7420370439847394
-  common_root_alignment_translation_m:
-  - 0.9772293655794406
-  - -1.410371295677547
-  - 0.11278178759592294
-  root_alignment_definition: neutral_g1_root_minus_scaled_source_frame0_root
+  estimator_formula: argmin_s sum_k w_k ||s(h_k-h_root)-(r_k-r_root)||^2
+  source_root_frame: frame0 Hips origin; geometry heading removed; canonical +X forward
+  robot_root_frame: neutral canonical Holosoma G1 pelvis; +X forward
+  landmark_weights_policy: registered_equal_weight_per_landmark
   source_landmarks:
   - Head
-  - mean(LeftToe,RightToe)
+  - LeftArm
+  - RightArm
+  - LeftUpLeg
+  - RightUpLeg
+  - LeftLeg
+  - RightLeg
+  - LeftFoot
+  - RightFoot
+  - LeftToe
+  - RightToe
   robot_landmarks:
   - head
-  - mean(left_toe,right_toe)
+  - left_shoulder
+  - right_shoulder
+  - left_hip
+  - right_hip
+  - left_knee
+  - right_knee
+  - left_ankle
+  - right_ankle
+  - left_toe
+  - right_toe
+  landmark_weights:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  excluded_landmarks:
+    torso: LAFAN Spine2 and canonical G1 torso-link origins are not homologous
+    elbows_and_wrists: source frame-0 and neutral-G1 distal-arm poses differ
+  least_squares_numerator_m2: 3.9002514579570695
+  least_squares_denominator_m2: 4.710405413069278
+  weighted_residual_rmse_m: 0.10780116615668069
+  maximum_residual_m: 0.1422968492698178
+  per_landmark_residual_m:
+  - 0.11279848413645778
+  - 0.13217794009718223
+  - 0.13371476282437017
+  - 0.1422968492698178
+  - 0.13768639509351616
+  - 0.08645153578183472
+  - 0.08127168414377905
+  - 0.07316104877390385
+  - 0.09341577728707669
+  - 0.08917735001570101
+  - 0.06664326188678234
+  source_heading_yaw_rad: -1.5323602183486797
+  source_heading_alignment_matrix:
+  - - 0.03842664531417804
+    - -0.9992614237174866
+    - 0.0
+  - - 0.9992614237174866
+    - 0.03842664531417804
+    - 0.0
+  - - 0.0
+    - 0.0
+    - 1.0
+  common_local_body_scale: 0.8280075950863185
+  local_body_scale_definition: shared_semantic_landmark_ls_value
+  common_root_displacement_scale: 0.8280075950863185
+  root_displacement_scale_definition: separately frozen scalar; numerically initialized
+    from shared LS
+  common_static_scale: 0.8280075950863185
+  common_root_alignment_translation_m:
+  - 1.0904487092665986
+  - -1.5737733771910685
+  - 0.033973411297512524
+  root_alignment_definition: neutral_g1_root_minus_root_displacement_scale_times_source_frame0_root
+  root_anchor_policy: neutral_g1_pelvis_at_source_frame0
+  root_local_and_anchor_frozen_separately: true
+  diagnostics:
+    head_to_toe_definition: neutral_g1_head_to_mean_toe_over_source_frame0_head_to_mean_toe
+    head_to_toe_role: diagnostic_only_not_common_policy
+    source_head_to_toe_span_m: 1.6008235258444419
+    robot_head_to_toe_span_m: 1.2540491454241585
+    head_to_toe_scale: 0.7833775086249071
 native_root_scales:
   sparse-neutral:
-    value: 0.7420370439847394
-    policy: controlled-v3 common benchmark scale and rigid root anchor
+    value: 0.8280075950863185
+    policy: controlled-v6 registered shared-landmark LS root gain
   sparse-a:
-    value: 0.7420370439847394
-    policy: controlled-v3 common benchmark scale and rigid root anchor
+    value: 0.8280075950863185
+    policy: controlled-v6 registered shared-landmark LS root gain
   sparse-b:
-    value: 0.7420370439847394
-    policy: controlled-v3 common benchmark scale and rigid root anchor
+    value: 0.8280075950863185
+    policy: controlled-v6 registered shared-landmark LS root gain
   dense:
-    value: 0.7420370439847394
-    policy: controlled-v3 common benchmark scale and rigid root anchor
+    value: 0.8280075950863185
+    policy: controlled-v6 registered shared-landmark LS root gain
   gmr:
     value: 0.875
     policy: official GMR Hips scale 0.9 times hard-coded LAFAN height 1.75 / assumption
@@ -46,6 +159,18 @@ native_root_scales:
   omniretarget:
     value: 0.7470588235294118
     policy: official Holosoma LAFAN default_scale_factor
+  protomotions_v2_3_mink:
+    value_xyz:
+    - 0.75
+    - 1.0
+    - 0.8
+    policy: official ProtoMotions v2.3 world-axis position scaling
+  protomotions_v3:
+    value_xyz:
+    - 0.9
+    - 0.9
+    - 0.85
+    policy: official ProtoMotions v3 root/lower-body axis scaling
 thresholds:
   foot_skating_speed_m_s: 0.01
   ground_penetration_m: 0.01

@@ -15,6 +15,21 @@ from .io_utils import atomic_write_json
 from .rotations import normalize_quaternion_wxyz
 
 
+def _require_unit_quaternion_wxyz(value: np.ndarray, label: str) -> None:
+    """Reject malformed canonical quaternion evidence instead of repairing it."""
+
+    quaternion = np.asarray(value, dtype=np.float64)
+    # Keep the shared helper's finite/zero diagnostics, but deliberately ignore
+    # its normalized return: normalization belongs at an adapter boundary.
+    normalize_quaternion_wxyz(quaternion)
+    norms = np.linalg.norm(quaternion, axis=-1)
+    if not np.allclose(norms, 1.0, atol=1e-6, rtol=0.0):
+        maximum = float(np.max(np.abs(norms - 1.0)))
+        raise ValueError(
+            f"{label} must contain unit wxyz quaternions; max norm error={maximum:.3e}"
+        )
+
+
 class RunStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -65,8 +80,8 @@ class CanonicalHuman:
             raise ValueError("foot_contact_labels must have shape [T,2]")
         if not np.isfinite(positions).all() or not np.isfinite(root).all():
             raise ValueError("Human motion contains NaN/Inf")
-        normalize_quaternion_wxyz(local)
-        normalize_quaternion_wxyz(world)
+        _require_unit_quaternion_wxyz(local, "local_rotations")
+        _require_unit_quaternion_wxyz(world, "world_rotations")
         if self.fps <= 0 or frames < 1:
             raise ValueError("fps and frame count must be positive")
         if frames > 1 and not np.allclose(np.diff(times), 1.0 / self.fps, atol=1e-8):
@@ -133,7 +148,7 @@ class CanonicalG1:
             raise ValueError("per_frame_solve_time_s must have shape [T]")
         if not np.isfinite(qpos).all() or not np.isfinite(self.per_frame_solve_time_s).all():
             raise ValueError("G1 output contains NaN/Inf")
-        normalize_quaternion_wxyz(qpos[:, 3:7])
+        _require_unit_quaternion_wxyz(qpos[:, 3:7], "qpos root rotation")
         if self.fps <= 0 or np.any(np.diff(self.source_frame_idx) <= 0):
             raise ValueError("fps must be positive and source_frame_idx strictly increasing")
         if source_frame_count is not None:

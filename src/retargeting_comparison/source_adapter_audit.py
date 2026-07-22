@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,11 +12,72 @@ from typing import Any
 import numpy as np
 
 from .calibration import human_heading_yaw
+from .constants import G1_JOINT_NAMES
 from .io_utils import atomic_write_json, atomic_write_yaml, load_yaml, sha256_file
 from .method_adapters import HOLOSOMA_LAFAN_ORDER, prepare_holosoma_lafan_input
 from .rotations import quaternion_wxyz_to_matrix
 from .schemas import CanonicalHuman
 from .source import foot_contacts
+
+
+PROTOMOTIONS_V3_CONCEPTUAL_JOINTS = (
+    ("pelvis", "Hips"),
+    ("left_hip", "LeftUpLeg"),
+    ("right_hip", "RightUpLeg"),
+    ("left_knee", "LeftLeg"),
+    ("right_knee", "RightLeg"),
+    ("left_ankle", "LeftFoot"),
+    ("right_ankle", "RightFoot"),
+    ("left_foot", "LeftToe"),
+    ("right_foot", "RightToe"),
+    ("left_shoulder", "LeftArm"),
+    ("right_shoulder", "RightArm"),
+    ("left_elbow", "LeftForeArm"),
+    ("right_elbow", "RightForeArm"),
+    ("left_wrist", "LeftHand"),
+    ("right_wrist", "RightHand"),
+)
+
+
+def _text_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _runtime_capture_evidence(
+    root: Path, sequence_id: str, method: str
+) -> dict[str, Any]:
+    path = (
+        root
+        / "runs"
+        / sequence_id
+        / "native-pre-solver-targets"
+        / method
+        / "capture.json"
+    )
+    if not path.is_file():
+        return {
+            "status": "prepared",
+            "pre_solver_capture_path": "pending_formal_runtime_capture",
+            "pre_solver_capture_sha256": "pending",
+            "pre_solver_tensor_sha256": "pending",
+            "runtime_boundary_observed": False,
+        }
+    capture = json.loads(path.read_text())
+    if (
+        capture.get("boundary_observed_during_formal_run") is not True
+        or capture.get("reconstruction_matches_runtime") is not True
+    ):
+        raise RuntimeError(f"Native runtime capture is not verified for {method}")
+    return {
+        "status": "passed",
+        "pre_solver_capture_path": path.relative_to(root).as_posix(),
+        "pre_solver_capture_sha256": sha256_file(path),
+        "pre_solver_tensor_sha256": str(capture["tensor_sha256"]),
+        "runtime_boundary_observed": True,
+    }
 
 
 def _heading_from_positions(names: list[str], positions: np.ndarray) -> np.ndarray:
@@ -168,25 +231,8 @@ def _prepare_protomotions_keypoints(human: CanonicalHuman, output: Path) -> dict
     environment, output-conversion, timeline, and visual gates.
     """
 
-    conceptual = (
-        ("pelvis", "Hips"),
-        ("left_hip", "LeftUpLeg"),
-        ("right_hip", "RightUpLeg"),
-        ("left_knee", "LeftLeg"),
-        ("right_knee", "RightLeg"),
-        ("left_ankle", "LeftFoot"),
-        ("right_ankle", "RightFoot"),
-        ("left_foot", "LeftToe"),
-        ("right_foot", "RightToe"),
-        ("left_shoulder", "LeftArm"),
-        ("right_shoulder", "RightArm"),
-        ("left_elbow", "LeftForeArm"),
-        ("right_elbow", "RightForeArm"),
-        ("left_wrist", "LeftHand"),
-        ("right_wrist", "RightHand"),
-    )
     source_index = {name: index for index, name in enumerate(human.joint_names.astype(str))}
-    indices = [source_index[source] for _, source in conceptual]
+    indices = [source_index[source] for _, source in PROTOMOTIONS_V3_CONCEPTUAL_JOINTS]
     positions = human.world_positions[:, indices].copy()
     orientations = quaternion_wxyz_to_matrix(human.world_rotations[:, indices])
     left_wrist = 13
@@ -248,6 +294,57 @@ def audit_source_adapters(repo_root: str | Path = ".") -> list[dict[str, Any]]:
     sequence_id = str(sequence["sequence_id"])
     rows: list[dict[str, Any]] = []
     artifacts: dict[str, dict[str, Any]] = {}
+    joint_order_sha256 = _text_sha256(list(G1_JOINT_NAMES))
+
+    def append_row(
+        *,
+        adapter: str,
+        method: str,
+        metrics: dict[str, Any],
+        native_input_feature: str,
+        source_shape_policy: str,
+        target_construction: str,
+        scale_policy: str,
+        root_anchor_policy: str,
+        orientation_target_policy: str,
+        contact_target_policy: str,
+        graph_policy: str,
+        ground_policy: str,
+        timeline_policy: str,
+        robot_asset_path: Path,
+        source_artifact_path: Path,
+        caveat: str,
+    ) -> None:
+        runtime = _runtime_capture_evidence(root, sequence_id, method)
+        rows.append(
+            {
+                "adapter": adapter,
+                "method": method,
+                "sequence_id": sequence_id,
+                **metrics,
+                **runtime,
+                "native_input_feature": native_input_feature,
+                "source_shape_policy": source_shape_policy,
+                "target_construction": target_construction,
+                "scale_policy": scale_policy,
+                "root_anchor_policy": root_anchor_policy,
+                "orientation_target_policy": orientation_target_policy,
+                "contact_target_policy": contact_target_policy,
+                "graph_policy": graph_policy,
+                "ground_policy": ground_policy,
+                "timeline_policy": timeline_policy,
+                "robot_asset_path": robot_asset_path.relative_to(root).as_posix(),
+                "robot_asset_sha256": sha256_file(robot_asset_path),
+                "robot_joint_order_sha256": joint_order_sha256,
+                "source_adapter_artifact_path": source_artifact_path.relative_to(
+                    root
+                ).as_posix(),
+                "source_adapter_artifact_sha256": sha256_file(
+                    source_artifact_path
+                ),
+                "caveat": caveat,
+            }
+        )
 
     gmr_names, gmr_positions = _gmr_positions(root, source_bvh)
     gmr_dir = root / "source_adapters" / "gmr" / sequence_id
@@ -255,16 +352,29 @@ def audit_source_adapters(repo_root: str | Path = ".") -> list[dict[str, Any]]:
     gmr_native = gmr_dir / "official_loader_positions.npz"
     np.savez_compressed(gmr_native, names=np.asarray(gmr_names), positions=gmr_positions)
     gmr_metrics = adapter_error_metrics(human, gmr_names, gmr_positions)
-    rows.append(
-        {
-            "adapter": "canonical_bvh_to_gmr_lafan",
-            "method": "gmr",
-            "sequence_id": sequence_id,
-            **gmr_metrics,
-            "status": "passed",
-            "native_input_feature": "full LAFAN pose dictionary",
-            "caveat": "Official GMR LAFAN loader; contact labels are evaluator-only, not a GMR objective.",
-        }
+    append_row(
+        adapter="canonical_bvh_to_gmr_lafan",
+        method="gmr",
+        metrics=gmr_metrics,
+        native_input_feature="full LAFAN pose dictionary",
+        source_shape_policy=(
+            "official BVH loader estimates actor height; no SMPL beta or gender"
+        ),
+        target_construction="official GMR two-table semantic FrameTasks",
+        scale_policy="official per-body scale table times estimated actor-height ratio",
+        root_anchor_policy="native absolute root; benchmark scale perturbations use frame-0 anchor",
+        orientation_target_policy="official configured segment orientation tasks",
+        contact_target_policy="none",
+        graph_policy="two sequential configured IK task tables",
+        ground_policy="offset_to_ground=false in formal LAFAN run",
+        timeline_policy=f"{human.fps:.12g} fps; one target per canonical frame",
+        robot_asset_path=(
+            root / "external/GMR/assets/unitree_g1/g1_mocap_29dof.xml"
+        ),
+        source_artifact_path=gmr_native,
+        caveat=(
+            "Official GMR LAFAN loader; evaluator contacts are not a GMR objective."
+        ),
     )
     atomic_write_json(gmr_dir / "manifest.json", rows[-1])
     artifacts["gmr"] = {
@@ -280,22 +390,93 @@ def audit_source_adapters(repo_root: str | Path = ".") -> list[dict[str, Any]]:
     aliases = {"LeftToeBase": "LeftToe", "RightToeBase": "RightToe"}
     holosoma_names = [aliases.get(name, name) for name in HOLOSOMA_LAFAN_ORDER]
     holosoma_metrics = adapter_error_metrics(human, holosoma_names, restored)
-    rows.append(
-        {
-            "adapter": "canonical_bvh_to_holosoma_lafan",
-            "method": "omniretarget",
-            "sequence_id": sequence_id,
-            **holosoma_metrics,
-            "status": "passed",
-            "native_input_feature": "right-first LAFAN world positions",
-            "caveat": "Exact joint reorder and Z-up/Y-up involution; contact is inferred downstream.",
-        }
+    append_row(
+        adapter="canonical_bvh_to_holosoma_lafan",
+        method="omniretarget",
+        metrics=holosoma_metrics,
+        native_input_feature="right-first LAFAN world positions",
+        source_shape_policy="fixed LAFAN geometry; no SMPL beta or gender",
+        target_construction="15 mapped positions plus per-frame Delaunay ground mesh",
+        scale_policy="official uniform 1.27/1.7 after spine edit and grounding",
+        root_anchor_policy="official global toe grounding; no benchmark re-anchor in native arm",
+        orientation_target_policy="none; interaction-mesh Laplacian position geometry",
+        contact_target_policy="official toe-velocity foot-sticking inference",
+        graph_policy="per-frame Delaunay interaction mesh and uniform Laplacian",
+        ground_policy="Spine1.z-=0.06, toe-min grounding, then native scale",
+        timeline_policy=f"{human.fps:.12g} fps; exact 600-frame native array",
+        robot_asset_path=(
+            root
+            / "external/holosoma/src/holosoma_retargeting/holosoma_retargeting/models/g1/g1_29dof.urdf"
+        ),
+        source_artifact_path=native_path,
+        caveat=(
+            "Exact joint reorder and Z-up/Y-up involution; downstream preprocessing "
+            "is a method policy and is reported separately from adapter error."
+        ),
     )
     atomic_write_json(holosoma_dir / "manifest.json", rows[-1])
     artifacts["omniretarget"] = {
         "path": native_path.relative_to(root).as_posix(),
         "sha256": sha256_file(native_path),
         "size_bytes": native_path.stat().st_size,
+    }
+
+    v2_config = load_yaml(root / "configs/protomotions_v2.yaml")
+    v2_targets = list(v2_config["source_adapter"]["targets"])
+    source_index = {
+        name: index for index, name in enumerate(human.joint_names.astype(str))
+    }
+    v2_names = [str(target["human_joint"]) for target in v2_targets]
+    v2_source_positions = human.world_positions[
+        :, [source_index[name] for name in v2_names]
+    ]
+    v2_axis_scale = np.asarray(
+        v2_config["algorithm"]["position_scale_xyz"], dtype=np.float64
+    )
+    v2_solver_positions = v2_source_positions * v2_axis_scale
+    v2_restored_positions = v2_solver_positions / v2_axis_scale
+    v2_metrics = adapter_error_metrics(human, v2_names, v2_restored_positions)
+    v2_dir = root / "source_adapters/protomotions_v2.3" / sequence_id
+    v2_dir.mkdir(parents=True, exist_ok=True)
+    v2_path = v2_dir / "semantic_targets.npz"
+    np.savez_compressed(
+        v2_path,
+        names=np.asarray(v2_names),
+        canonical_positions=v2_source_positions,
+        solver_position_targets=v2_solver_positions,
+        position_scale_xyz=v2_axis_scale,
+    )
+    append_row(
+        adapter="canonical_lafan_to_protomotions_v2.3_mink",
+        method="protomotions-v2.3",
+        metrics=v2_metrics,
+        native_input_feature="14 semantic world-frame FrameTasks",
+        source_shape_policy=(
+            "canonical actor geometry retained; upstream AMASS path uses zero beta; "
+            "this LAFAN port is not PHC"
+        ),
+        target_construction="v2.3 public G1 Mink target set with LAFAN semantic selection",
+        scale_policy="official anisotropic world-axis position scale [0.75,1.0,0.8]",
+        root_anchor_policy="absolute scaled root; per-frame post-solve ground alignment",
+        orientation_target_policy=(
+            "disabled in the LAFAN port because BVH and SMPL-X local frames are not equivalent"
+        ),
+        contact_target_policy="none",
+        graph_policy="14 Mink FrameTasks plus posture and configuration limits",
+        ground_policy="root-z shift matching source lowest-joint height per frame",
+        timeline_policy=f"{human.fps:.12g} fps; 100-frame-equivalent warm start then one output/frame",
+        robot_asset_path=root / str(v2_config["native_robot"]["xml"]),
+        source_artifact_path=v2_path,
+        caveat=(
+            "Benchmark LAFAN adapter around the public v2.3 Mink retargeter; it is "
+            "neither an upstream LAFAN entry point nor a PHC policy result."
+        ),
+    )
+    atomic_write_json(v2_dir / "manifest.json", rows[-1])
+    artifacts["protomotions-v2.3"] = {
+        "path": v2_path.relative_to(root).as_posix(),
+        "sha256": sha256_file(v2_path),
+        "size_bytes": v2_path.stat().st_size,
     }
 
     proto_path = (
@@ -306,21 +487,42 @@ def audit_source_adapters(repo_root: str | Path = ".") -> list[dict[str, Any]]:
         / "keypoints.npy"
     )
     proto_metrics = _prepare_protomotions_keypoints(human, proto_path)
-    atomic_write_json(proto_path.parent / "manifest.json", proto_metrics)
-    artifacts["protomotions_v3"] = {
+    proto_mapping = np.load(proto_path, allow_pickle=True).item()
+    proto_names = [source for _, source in PROTOMOTIONS_V3_CONCEPTUAL_JOINTS]
+    proto_adapter_metrics = adapter_error_metrics(
+        human,
+        proto_names,
+        np.asarray(proto_mapping["positions"], dtype=np.float64)[:, :15],
+    )
+    append_row(
+        adapter="canonical_lafan_to_protomotions_v3_keypoints",
+        method="protomotions-v3",
+        metrics=proto_adapter_metrics,
+        native_input_feature="15 semantic plus 3 auxiliary world-frame keypoints",
+        source_shape_policy="direct canonical actor keypoints; no SMPL beta or gender",
+        target_construction="published generic SMPL keypoint schema through modified PyRoki",
+        scale_policy="official root/lower/upper anisotropic keypoint scales",
+        root_anchor_policy="absolute scaled root; official whole-trajectory optimization",
+        orientation_target_policy="15 source world orientations plus copied auxiliary frames",
+        contact_target_policy="canonical contacts repeated ankle/toe then official smoothing",
+        graph_policy="official fixed pairwise retarget mask and whole-trajectory objectives",
+        ground_policy="official contact/tilt losses; no post-hoc ground shift",
+        timeline_policy=f"{human.fps:.12g} fps; stride 1; whole 600-frame solve",
+        robot_asset_path=(
+            root
+            / "external/ProtoMotions/protomotions/data/assets/urdf/for_retargeting/g1.urdf"
+        ),
+        source_artifact_path=proto_path,
+        caveat=str(proto_metrics["caveat"]),
+    )
+    atomic_write_json(proto_path.parent / "manifest.json", rows[-1])
+    artifacts["protomotions-v3"] = {
         "path": proto_path.relative_to(root).as_posix(),
         "sha256": sha256_file(proto_path),
         "size_bytes": proto_path.stat().st_size,
-        "status": "input_schema_ready_only",
+        "status": rows[-1]["status"],
         "caveat": proto_metrics["caveat"],
     }
-    candidate_output = root / "metrics" / "candidate_source_adapter_errors.csv"
-    with candidate_output.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(
-            stream, fieldnames=list(proto_metrics), lineterminator="\n"
-        )
-        writer.writeheader()
-        writer.writerow(proto_metrics)
 
     output = root / "metrics" / "source_adapter_errors.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -333,15 +535,22 @@ def audit_source_adapters(repo_root: str | Path = ".") -> list[dict[str, Any]]:
     atomic_write_yaml(
         root / "manifests" / "source_adapters.yaml",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "sequence_id": sequence_id,
             "canonical_source_sha256": human.source_sha256,
             "metrics_path": output.relative_to(root).as_posix(),
             "metrics_sha256": sha256_file(output),
-            "candidate_metrics_path": candidate_output.relative_to(root).as_posix(),
-            "candidate_metrics_sha256": sha256_file(candidate_output),
             "native_artifacts_committed_to_git": False,
             "native_artifacts": artifacts,
+            "expected_methods": [
+                "gmr",
+                "omniretarget",
+                "protomotions-v2.3",
+                "protomotions-v3",
+            ],
+            "all_runtime_boundaries_observed": all(
+                bool(row["runtime_boundary_observed"]) for row in rows
+            ),
             "full_lafan_authorized": False,
         },
     )

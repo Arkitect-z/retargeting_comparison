@@ -1,0 +1,94 @@
+method: protomotions_v3
+label: ProtoMotions v3 modified-PyRoki canonical-LAFAN port
+role: required_stage1_operating_point
+method_family: benchmark_lafan_port_of_public_solver
+upstream:
+  repository: https://github.com/NVlabs/ProtoMotions.git
+  commit: 49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c
+  script: pyroki/batch_retarget_to_g1_from_keypoints.py
+pyroki:
+  repository: https://github.com/chungmin99/pyroki.git
+  commit: 388e43e1fc0d0ee382968d3dd72970fd62a0450c
+  note: ProtoMotions documents a floating install; the benchmark freezes this checkout.
+native_environment:
+  conda_environment: egoallo
+  override_variable: RTCMP_PROTOMOTIONS_V3_PYTHON
+  formal_device: cpu
+  rejected_device_attempt:
+    device: NVIDIA RTX 3090 Ti
+    backend: cuda
+    status: hardware_compatibility_failure
+    reason: XLA kernel requested 131072 shared-memory bytes; device exposed 101376
+    substitute_output_used: false
+  python: 3.12.12
+  packages:
+    jax: 0.8.2
+    jaxlib: 0.8.2
+    jaxlie: 1.5.0
+    jaxls: 0.0.0
+    jaxls_commit: cb89259f87402872485dc83706dc28234f898a82
+    jax_dataclasses: 1.6.3
+    yourdfpy: 0.0.59
+    numpy: 2.4.1
+  source_paths:
+    - external/pyroki_upstream/src
+    - external/ProtoMotions
+input:
+  source_type: smpl
+  target_raw_frames: 600
+  subsample_factor: 1
+  fps: 30.000300003000028
+  keypoint_count: 18
+  coordinate_unit: metre
+official_scale_policy:
+  root_xyz: [0.9, 0.9, 0.85]
+  lower_body_local_xyz: [0.9, 0.9, 0.85]
+  upper_body_local_xyz: [0.9, 0.9, 0.8]
+within_method_scale_response:
+  apply_before_official_native_scale: true
+  root_anchor: frame_zero_pelvis
+  fixed_orientations: true
+  fixed_contact_labels: true
+  variants:
+    native: [1.0, 1.0]
+    root_minus_5: [0.95, 1.0]
+    root_plus_5: [1.05, 1.0]
+    local_minus_5: [1.0, 0.95]
+    local_plus_5: [1.0, 1.05]
+solver:
+  whole_trajectory: true
+  maximum_iterations: 800
+  self_collision_weight: 0.0
+  weights:
+    local_alignment: 1.0
+    global_alignment: 4.0
+    root_smoothness: 1.0
+    joint_smoothness: 4.0
+    joint_rest_penalty: 1.0
+    joint_velocity_limit: 50.0
+    foot_contact: 30.0
+    foot_tilt: 1.0
+timing:
+  new_process: true
+  independent_cold_runs: 1
+  warmup_runs: 1
+  measured_runs: 3
+  synchronization: full_solution_numpy_conversion
+  per_frame_field: amortized_whole_trajectory_median
+campaign:
+  order:
+    - independent_cold_native
+    - formal_native_timing
+    - root_minus_5
+    - root_plus_5
+    - local_minus_5
+    - local_plus_5
+  native_formal_output_reused_for_native_scale_variant: true
+  non_native_scale_variant_repetitions: 1
+output:
+  joint_order: canonical_g1_29
+  root_quaternion: wxyz
+  translation_unit: metre
+  dtype: float64
+  exact_frames_required: 600
+no_substitution: true

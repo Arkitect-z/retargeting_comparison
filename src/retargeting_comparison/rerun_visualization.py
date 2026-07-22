@@ -9,6 +9,12 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -30,6 +36,8 @@ class MethodStyle:
     display_name: str
     color: tuple[int, int, int]
     operating_point: bool
+    external_reference: bool = False
+    annotate_artifact_causes: bool = True
 
 
 METHOD_STYLES = (
@@ -37,6 +45,26 @@ METHOD_STYLES = (
     MethodStyle("dense", "Dense", (42, 157, 111), True),
     MethodStyle("gmr", "GMR", (225, 174, 49), True),
     MethodStyle("omniretarget", "OmniRetarget", (132, 113, 238), True),
+    MethodStyle(
+        "protomotions-v2.3",
+        "ProtoMotions v2.3 · Mink",
+        (243, 139, 45),
+        True,
+    ),
+    MethodStyle(
+        "protomotions-v3",
+        "ProtoMotions v3 · modified PyRoki",
+        (73, 191, 171),
+        True,
+    ),
+    MethodStyle(
+        "unitree-reference",
+        "Unitree-attributed external reference",
+        (245, 245, 245),
+        False,
+        external_reference=True,
+        annotate_artifact_causes=False,
+    ),
     MethodStyle("sparse-a", "Sparse · seed A", (47, 169, 209), False),
     MethodStyle("sparse-b", "Sparse · seed B", (214, 91, 156), False),
 )
@@ -44,26 +72,60 @@ METHOD_STYLES = (
 SOURCE_STYLE = MethodStyle("source-human", "Source human", (230, 234, 241), True)
 
 LANE_OFFSETS = {
-    "source-human": (-6.0, 3.0, 0.0),
-    "sparse-neutral": (-2.0, 3.0, 0.0),
-    "dense": (2.0, 3.0, 0.0),
-    "gmr": (6.0, 3.0, 0.0),
-    "omniretarget": (-4.0, -3.0, 0.0),
-    "sparse-a": (0.0, -3.0, 0.0),
-    "sparse-b": (4.0, -3.0, 0.0),
+    "source-human": (-8.0, 3.0, 0.0),
+    "sparse-neutral": (-4.0, 3.0, 0.0),
+    "dense": (0.0, 3.0, 0.0),
+    "gmr": (4.0, 3.0, 0.0),
+    "omniretarget": (8.0, 3.0, 0.0),
+    "protomotions-v2.3": (-8.0, -3.0, 0.0),
+    "protomotions-v3": (-4.0, -3.0, 0.0),
+    "unitree-reference": (0.0, -3.0, 0.0),
+    "sparse-a": (4.0, -3.0, 0.0),
+    "sparse-b": (8.0, -3.0, 0.0),
 }
+
+EXPECTED_TRAJECTORY_KEYS = tuple(style.key for style in METHOD_STYLES)
+
+# There is exactly one admissible run directory and one admissible evaluator
+# table for every trajectory.  These paths deliberately have no legacy
+# fallback: a stale output must fail closed rather than silently enter a new
+# recording.
+if set(EXPECTED_TRAJECTORY_KEYS) != set(STAGE1_RUN_DIRECTORIES):
+    raise RuntimeError(
+        "Rerun trajectory registry must exactly match STAGE1_RUN_DIRECTORIES"
+    )
+
+PUBLICATION_SUMMARY_FILES = (
+    "metrics/stage1_core_summary.csv",
+    "metrics/stage1_sparse_seed_evaluations.csv",
+    "metrics/stage1_reference_summary.csv",
+)
 
 VIEW_METHOD_KEYS = {
     "grid": tuple(style.key for style in METHOD_STYLES),
-    "world": tuple(style.key for style in METHOD_STYLES if style.operating_point),
-    "root_frame": tuple(style.key for style in METHOD_STYLES if style.operating_point),
+    "world": tuple(
+        style.key
+        for style in METHOD_STYLES
+        if style.operating_point or style.external_reference
+    ),
+    "root_frame": tuple(
+        style.key
+        for style in METHOD_STYLES
+        if style.operating_point or style.external_reference
+    ),
     "seeds": tuple(style.key for style in METHOD_STYLES if style.key.startswith("sparse-")),
+}
+
+CLOSEUP_METHOD_KEYS = EXPECTED_TRAJECTORY_KEYS
+EXPECTED_VIEW_INSTANCE_COUNTS = {
+    **{view: len(keys) for view, keys in VIEW_METHOD_KEYS.items()},
+    "closeups": len(CLOSEUP_METHOD_KEYS),
 }
 
 ROBOT_SEMANTIC_LINKS = {
     "root": "pelvis",
     "torso": "torso_link",
-    "head": "head_link",
+    "head": "mid360_link",
     "left_shoulder": "left_shoulder_roll_link",
     "right_shoulder": "right_shoulder_roll_link",
     "left_elbow": "left_elbow_link",
@@ -326,13 +388,7 @@ class UrdfSemanticKinematics:
         frames = len(transforms["pelvis"])
         result = np.empty((frames, len(ROBOT_SEMANTICS), 3), dtype=np.float64)
         for semantic, link in ROBOT_SEMANTIC_LINKS.items():
-            if semantic == "head":
-                continue
             result[:, ROBOT_SEMANTIC_INDEX[semantic]] = transforms[link][:, :3, 3]
-        torso = transforms["torso_link"]
-        result[:, ROBOT_SEMANTIC_INDEX["head"]] = (
-            torso[:, :3, 3] + torso[:, :3, :3] @ np.asarray([0.0, 0.0, 0.35])
-        )
         return result
 
 
@@ -343,6 +399,10 @@ class MethodVisualization:
     positions: np.ndarray
     link_transforms: dict[str, np.ndarray]
     metrics: dict[str, np.ndarray]
+    output_path: Path
+    metrics_path: Path
+    metrics_summary_path: Path
+    evidence_binding: dict[str, Any]
 
 
 @dataclass
@@ -354,6 +414,10 @@ class Stage1Visualization:
     methods: dict[str, MethodVisualization]
     urdf_path: Path
     robot_visuals: tuple[UrdfVisual, ...]
+    missing_methods: dict[str, str]
+    source_path: Path
+    evaluator_path: Path
+    evaluator_robot_path: Path
 
     @property
     def frame_count(self) -> int:
@@ -381,55 +445,258 @@ def _load_metrics(path: Path, frame_count: int) -> dict[str, np.ndarray]:
     return result
 
 
+def _canonical_json_sha256(value: Any) -> str:
+    payload = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _run_output_path(root: Path, sequence_id: str, key: str) -> Path:
+    """Resolve one output exclusively through the live Stage 1 registry."""
+
+    return (
+        root
+        / "runs"
+        / sequence_id
+        / STAGE1_RUN_DIRECTORIES[key]
+        / "canonical_g1.npz"
+    )
+
+
+def _metric_path(root: Path, key: str) -> Path:
+    """Return the sole publication-grade per-frame evaluator table."""
+
+    return root / "metrics" / "stage1_publication" / "runs" / f"{key}_per_frame.csv"
+
+
+def _metric_summary_path(root: Path, key: str) -> Path:
+    return root / "metrics" / "stage1_publication" / "runs" / f"{key}_summary.json"
+
+
+def _publication_binding_rows(
+    root: Path,
+) -> tuple[dict[str, tuple[dict[str, str], Path]], tuple[Path, ...]]:
+    rows: dict[str, tuple[dict[str, str], Path]] = {}
+    missing: list[Path] = []
+    for relative in PUBLICATION_SUMMARY_FILES:
+        path = root / relative
+        if not path.is_file():
+            missing.append(path)
+            continue
+        with path.open(newline="", encoding="utf-8") as stream:
+            for row in csv.DictReader(stream):
+                key = str(row.get("key", ""))
+                if key not in EXPECTED_TRAJECTORY_KEYS:
+                    continue
+                if key in rows:
+                    raise ValueError(f"Duplicate publication binding row for {key}")
+                rows[key] = (row, path)
+    return rows, tuple(missing)
+
+
+def _build_evidence_binding(
+    *,
+    root: Path,
+    key: str,
+    output_path: Path,
+    metrics_path: Path,
+    metrics_summary_path: Path,
+    publication_row: dict[str, str],
+    publication_path: Path,
+    human: CanonicalHuman,
+    source_path: Path,
+    evaluator_path: Path,
+    evaluator: dict[str, Any],
+    urdf_path: Path,
+) -> dict[str, Any]:
+    """Verify and describe the output↔metric↔source↔robot evidence chain."""
+
+    output_rel = output_path.relative_to(root).as_posix()
+    output_sha = sha256_file(output_path)
+    evaluator_sha = sha256_file(evaluator_path)
+    evaluator_robot_path = root / str(evaluator["robot_xml"])
+    declared_output = str(publication_row.get("output_path", ""))
+    if declared_output != output_rel:
+        raise ValueError(
+            f"{key} publication row points to {declared_output!r}, expected {output_rel!r}"
+        )
+    if publication_row.get("output_sha256") != output_sha:
+        raise ValueError(f"{key} publication output hash is stale")
+
+    metric_summary = json.loads(metrics_summary_path.read_text(encoding="utf-8"))
+    if not isinstance(metric_summary, dict):
+        raise ValueError(f"{key} evaluator summary is not a mapping")
+    for owner, value in (
+        ("publication row", publication_row),
+        ("metric summary", metric_summary),
+    ):
+        if str(value.get("canonical_source_sha256", "")) != human.source_sha256:
+            raise ValueError(f"{key} {owner} is bound to a different source")
+        if str(value.get("evaluator_protocol_sha256", "")) != evaluator_sha:
+            raise ValueError(f"{key} {owner} is bound to a different evaluator")
+        if str(value.get("robot_model_sha256", "")) != str(
+            evaluator["robot_xml_sha256"]
+        ):
+            raise ValueError(f"{key} {owner} is bound to a different evaluator robot")
+        if int(float(value.get("frames", -1))) != len(human.timestamps):
+            raise ValueError(f"{key} {owner} has the wrong frame count")
+
+    if sha256_file(evaluator_robot_path) != str(evaluator["robot_xml_sha256"]):
+        raise ValueError("Evaluator robot XML hash differs from its frozen manifest")
+    if str(evaluator.get("source_sha256", "")) != human.source_sha256:
+        raise ValueError("Evaluator manifest is bound to a different source")
+
+    binding: dict[str, Any] = {
+        "run_directory_registry_key": key,
+        "run_directory": STAGE1_RUN_DIRECTORIES[key],
+        "output": {
+            "path": output_rel,
+            "size_bytes": output_path.stat().st_size,
+            "sha256": output_sha,
+        },
+        "per_frame_metrics": {
+            "path": metrics_path.relative_to(root).as_posix(),
+            "size_bytes": metrics_path.stat().st_size,
+            "sha256": sha256_file(metrics_path),
+        },
+        "metrics_summary": {
+            "path": metrics_summary_path.relative_to(root).as_posix(),
+            "size_bytes": metrics_summary_path.stat().st_size,
+            "sha256": sha256_file(metrics_summary_path),
+        },
+        "publication_binding_table": {
+            "path": publication_path.relative_to(root).as_posix(),
+            "sha256": sha256_file(publication_path),
+        },
+        "source": {
+            "path": source_path.relative_to(root).as_posix(),
+            "canonical_package_sha256": sha256_file(source_path),
+            "declared_source_sha256": human.source_sha256,
+        },
+        "evaluator": {
+            "path": evaluator_path.relative_to(root).as_posix(),
+            "sha256": evaluator_sha,
+            "schema_version": int(evaluator["schema_version"]),
+        },
+        "robot": {
+            "canonical_urdf_path": urdf_path.relative_to(root).as_posix(),
+            "canonical_urdf_sha256": sha256_file(urdf_path),
+            "evaluator_xml_path": evaluator_robot_path.relative_to(root).as_posix(),
+            "evaluator_xml_sha256": sha256_file(evaluator_robot_path),
+        },
+        "verified": True,
+    }
+    binding["binding_sha256"] = _canonical_json_sha256(binding)
+    return binding
+
+
 def load_stage1_visualization(
     repo_root: str | Path = ".",
     sequence_manifest: str | Path = "manifests/pilot_sequence.yaml",
+    *,
+    skip_missing_methods: bool = False,
 ) -> Stage1Visualization:
     root = Path(repo_root).resolve()
     sequence_path = Path(sequence_manifest)
     if not sequence_path.is_absolute():
         sequence_path = root / sequence_path
     sequence = load_yaml(sequence_path)
-    if sequence.get("full_lafan_authorized") is not False:
-        raise RuntimeError("Visualization requires the frozen Stage 1 Full-LAFAN hard stop")
-    human = CanonicalHuman.load(root / sequence["canonical_path"])
+    source_path = root / sequence["canonical_path"]
+    human = CanonicalHuman.load(source_path)
     stage = load_yaml(root / "configs" / "stage1.yaml")
     urdf_value = stage["canonical_robot"].get("urdf")
     if not urdf_value:
         raise ValueError("configs/stage1.yaml must declare canonical_robot.urdf")
     urdf_path = root / urdf_value
     kinematics = UrdfSemanticKinematics(urdf_path)
+    evaluator_path = root / "manifests" / "evaluator.yaml"
+    evaluator = load_yaml(evaluator_path)
+    evaluator_robot_path = root / str(evaluator["robot_xml"])
+    publication_rows, missing_publication_tables = _publication_binding_rows(root)
 
     sequence_id = sequence["sequence_id"]
     methods: dict[str, MethodVisualization] = {}
+    missing_methods: dict[str, str] = {}
     for style in METHOD_STYLES:
-        path = (
-            root
-            / "runs"
-            / sequence_id
-            / STAGE1_RUN_DIRECTORIES[style.key]
-            / "canonical_g1.npz"
-        )
+        path = _run_output_path(root, sequence_id, style.key)
+        metrics_path = _metric_path(root, style.key)
+        metrics_summary_path = _metric_summary_path(root, style.key)
+        publication_binding = publication_rows.get(style.key)
+        missing = []
         if not path.is_file():
-            raise FileNotFoundError(f"Required Stage 1 visualization output is missing: {path}")
+            missing.append(f"registered output {path}")
+        if not metrics_path.is_file():
+            missing.append(f"publication metrics {metrics_path}")
+        if not metrics_summary_path.is_file():
+            missing.append(f"publication metric summary {metrics_summary_path}")
+        if publication_binding is None:
+            missing.append(
+                "publication output binding row"
+                + (
+                    " (tables missing: "
+                    + ", ".join(str(value) for value in missing_publication_tables)
+                    + ")"
+                    if missing_publication_tables
+                    else ""
+                )
+            )
+        if missing:
+            missing_methods[style.key] = "; ".join(missing)
+            continue
+        assert publication_binding is not None
         motion = CanonicalG1.load(path)
         motion.validate(source_frame_count=len(human.timestamps))
         if not np.array_equal(motion.source_frame_idx, np.arange(len(human.timestamps))):
             raise ValueError(f"{style.key} does not cover the complete source frame timeline")
         link_transforms = kinematics.motion_link_transforms(motion.qpos)
         positions = kinematics._positions_from_link_transforms(link_transforms)
-        metrics = _load_metrics(root / "metrics" / "runs" / f"{style.key}_per_frame.csv", len(human.timestamps))
+        metrics = _load_metrics(metrics_path, len(human.timestamps))
         if not all(np.isfinite(value).all() for value in metrics.values()):
             raise ValueError(f"{style.key} visualization metrics contain missing or non-finite values")
+        publication_row, publication_path = publication_binding
+        evidence_binding = _build_evidence_binding(
+            root=root,
+            key=style.key,
+            output_path=path,
+            metrics_path=metrics_path,
+            metrics_summary_path=metrics_summary_path,
+            publication_row=publication_row,
+            publication_path=publication_path,
+            human=human,
+            source_path=source_path,
+            evaluator_path=evaluator_path,
+            evaluator=evaluator,
+            urdf_path=urdf_path,
+        )
         methods[style.key] = MethodVisualization(
-            style,
-            motion,
-            positions,
-            link_transforms,
-            metrics,
+            style=style,
+            motion=motion,
+            positions=positions,
+            link_transforms=link_transforms,
+            metrics=metrics,
+            output_path=path,
+            metrics_path=metrics_path,
+            metrics_summary_path=metrics_summary_path,
+            evidence_binding=evidence_binding,
         )
 
+    if missing_methods and not skip_missing_methods:
+        details = "\n".join(
+            f"- {key}: {reason}" for key, reason in missing_methods.items()
+        )
+        raise FileNotFoundError(
+            "Stage 1 Rerun inputs are incomplete:\n"
+            f"{details}\n"
+            "Complete/evaluate these methods, or set skip_missing_methods=True "
+            "for a diagnostic recording. A skipped recording is not Stage 1 evidence."
+        )
+    if not methods:
+        raise FileNotFoundError("No complete method output/metric pairs are available to visualize")
+
     protocol = load_evaluator_protocol(root / "manifests" / "evaluator.yaml")
+    if not missing_methods and tuple(methods) != EXPECTED_TRAJECTORY_KEYS:
+        raise ValueError("Visualization did not load the exact registered trajectory order")
     return Stage1Visualization(
         repo_root=root,
         sequence=sequence,
@@ -438,6 +705,10 @@ def load_stage1_visualization(
         methods=methods,
         urdf_path=urdf_path,
         robot_visuals=kinematics.visuals,
+        missing_methods=missing_methods,
+        source_path=source_path,
+        evaluator_path=evaluator_path,
+        evaluator_robot_path=evaluator_robot_path,
     )
 
 
@@ -541,22 +812,30 @@ def _segments(points: np.ndarray, edges: tuple[tuple[int, int], ...]) -> list[np
     return [points[[parent, child]] for parent, child in edges]
 
 
+def _active_styles(data: Stage1Visualization) -> tuple[MethodStyle, ...]:
+    return tuple(style for style in METHOD_STYLES if style.key in data.methods)
+
+
+def _active_view_method_keys(
+    data: Stage1Visualization, view: str
+) -> tuple[str, ...]:
+    return tuple(key for key in VIEW_METHOD_KEYS[view] if key in data.methods)
+
+
 def _recording_id(data: Stage1Visualization) -> str:
-    digest = hashlib.sha256(b"articulated_g1_visual_meshes_v3_evaluator_v2")
+    digest = hashlib.sha256(
+        b"articulated_g1_visual_meshes_v5_hash_bound_nine_closeups"
+    )
     digest.update(data.human.source_sha256.encode())
     digest.update(bytes.fromhex(sha256_file(data.urdf_path)))
     digest.update(
         bytes.fromhex(sha256_file(data.repo_root / "manifests" / "evaluator.yaml"))
     )
-    for style in METHOD_STYLES:
-        path = (
-            data.repo_root
-            / "runs"
-            / data.sequence["sequence_id"]
-            / STAGE1_RUN_DIRECTORIES[style.key]
-            / "canonical_g1.npz"
-        )
-        digest.update(bytes.fromhex(sha256_file(path)))
+    for style in _active_styles(data):
+        method = data.methods[style.key]
+        digest.update(style.key.encode())
+        digest.update(bytes.fromhex(sha256_file(method.output_path)))
+        digest.update(bytes.fromhex(sha256_file(method.metrics_path)))
     for visual in data.robot_visuals:
         digest.update(bytes.fromhex(sha256_file(visual.mesh_path)))
     return str(uuid.UUID(bytes=digest.digest()[:16]))
@@ -566,14 +845,95 @@ def _method_metric(data: Stage1Visualization, key: str, field: str, frame: int) 
     return float(data.methods[key].metrics[field][frame])
 
 
+def _hidden_robot_debug_overrides(
+    rrb: Any, root: str, method_keys: tuple[str, ...]
+) -> dict[str, Any]:
+    """Keep quantitative skeleton helpers available but hidden by default."""
+
+    return {
+        f"/{root}/{key}/{leaf}": rrb.EntityBehavior(visible=False)
+        for key in method_keys
+        for leaf in ("bones", "joints")
+    }
+
+
 def _blueprint(rrb: Any, fps: float) -> Any:
-    spatial = rrb.Tabs(
-        rrb.Spatial3DView(origin="/grid", name="Side-by-side · world motion", line_grid=True),
-        rrb.Spatial3DView(origin="/world", name="World overlay · root tracking", line_grid=True),
-        rrb.Spatial3DView(origin="/root_frame", name="Root-frame pose overlay", line_grid=False),
-        rrb.Spatial3DView(origin="/seeds", name="Sparse seed ambiguity", line_grid=False),
-        name="Motion views",
+    main_spatial = rrb.Tabs(
+        rrb.Spatial3DView(
+            origin="/grid",
+            name="Side-by-side · articulated G1",
+            line_grid=True,
+            eye_controls=rrb.EyeControls3D(
+                position=(0.0, -25.0, 8.0),
+                look_target=(0.0, 0.0, 1.0),
+                eye_up=(0.0, 0.0, 1.0),
+            ),
+            overrides=_hidden_robot_debug_overrides(
+                rrb, "grid", VIEW_METHOD_KEYS["grid"]
+            ),
+        ),
+        rrb.Spatial3DView(
+            origin="/world",
+            name="World overlay · root tracking",
+            line_grid=True,
+            eye_controls=rrb.EyeControls3D(
+                position=(3.5, -6.5, 3.2),
+                look_target=(0.0, 0.0, 0.9),
+                eye_up=(0.0, 0.0, 1.0),
+            ),
+            overrides=_hidden_robot_debug_overrides(
+                rrb, "world", VIEW_METHOD_KEYS["world"]
+            ),
+        ),
+        rrb.Spatial3DView(
+            origin="/root_frame",
+            name="Root-frame pose overlay",
+            line_grid=False,
+            eye_controls=rrb.EyeControls3D(
+                position=(2.8, -4.2, 2.0),
+                look_target=(0.0, 0.0, 0.8),
+                eye_up=(0.0, 0.0, 1.0),
+            ),
+            overrides=_hidden_robot_debug_overrides(
+                rrb, "root_frame", VIEW_METHOD_KEYS["root_frame"]
+            ),
+        ),
+        rrb.Spatial3DView(
+            origin="/seeds",
+            name="Sparse seed ambiguity",
+            line_grid=False,
+            eye_controls=rrb.EyeControls3D(
+                position=(2.8, -4.2, 2.0),
+                look_target=(0.0, 0.0, 0.8),
+                eye_up=(0.0, 0.0, 1.0),
+            ),
+            overrides=_hidden_robot_debug_overrides(
+                rrb, "seeds", VIEW_METHOD_KEYS["seeds"]
+            ),
+        ),
+        name="Overlay views",
     )
+    closeups = rrb.Grid(
+        *(
+            rrb.Spatial3DView(
+                origin=f"/closeups/{style.key}",
+                name=style.display_name,
+                line_grid=False,
+                eye_controls=rrb.EyeControls3D(
+                    position=(2.5, -3.4, 1.7),
+                    look_target=(0.0, 0.0, 0.75),
+                    eye_up=(0.0, 0.0, 1.0),
+                ),
+                overrides=_hidden_robot_debug_overrides(
+                    rrb, f"closeups/{style.key}", (style.key,)
+                ),
+            )
+            for style in METHOD_STYLES
+        ),
+        grid_columns=3,
+        name="Nine synchronized G1 close-ups",
+    )
+    spatial = rrb.Tabs(main_spatial, closeups, name="Articulated G1 motion")
     metrics = rrb.Tabs(
         rrb.TimeSeriesView(origin="/metrics/rf_kpe_all", name="RF-KPE all"),
         rrb.TimeSeriesView(
@@ -659,6 +1019,17 @@ def _artifact_label(method: MethodVisualization, frame: int) -> str:
     return "+".join(causes)
 
 
+def _frame_label(
+    style: MethodStyle, method: MethodVisualization, frame: int
+) -> str:
+    """Return an entity label without assigning artifact status to references."""
+
+    if not style.annotate_artifact_causes:
+        return style.display_name
+    cause = _artifact_label(method, frame)
+    return style.display_name + (f" · {cause}" if cause else "")
+
+
 def _log_series_styles(rr: Any, data: Stage1Visualization) -> None:
     series = (
         ("rf_kpe_all", "rf_kpe_all_m", False),
@@ -669,7 +1040,9 @@ def _log_series_styles(rr: Any, data: Stage1Visualization) -> None:
         ("solve_time", "solve_time_s", False),
     )
     for root, _, step in series:
-        for style in METHOD_STYLES:
+        for style in _active_styles(data):
+            if style.external_reference and root == "solve_time":
+                continue
             rr.log(
                 f"metrics/{root}/{style.key}",
                 rr.SeriesLines(
@@ -686,6 +1059,10 @@ def _mesh_entity(view: str, index: int, visual: UrdfVisual) -> str:
     return f"{view}/g1_visual_meshes/{index:02d}_{visual.link_name}"
 
 
+def _closeup_mesh_entity(key: str, index: int, visual: UrdfVisual) -> str:
+    return f"closeups/{key}/g1_visual_meshes/{index:02d}_{visual.link_name}"
+
+
 def _log_g1_mesh_assets(rr: Any, data: Stage1Visualization) -> None:
     """Embed one copy of each G1 visual mesh per comparison coordinate space."""
 
@@ -693,6 +1070,13 @@ def _log_g1_mesh_assets(rr: Any, data: Stage1Visualization) -> None:
         for index, visual in enumerate(data.robot_visuals):
             rr.log(
                 _mesh_entity(view, index, visual),
+                rr.Asset3D(path=visual.mesh_path, albedo_factor=visual.rgba),
+                static=True,
+            )
+    for style in _active_styles(data):
+        for index, visual in enumerate(data.robot_visuals):
+            rr.log(
+                _closeup_mesh_entity(style.key, index, visual),
                 rr.Asset3D(path=visual.mesh_path, albedo_factor=visual.rgba),
                 static=True,
             )
@@ -706,7 +1090,9 @@ def _log_g1_mesh_instances(
     frame: int,
     offsets: dict[str, tuple[float, float, float]] | None = None,
 ) -> None:
-    method_keys = VIEW_METHOD_KEYS[view]
+    method_keys = _active_view_method_keys(data, view)
+    if not method_keys:
+        return
     for index, visual in enumerate(data.robot_visuals):
         translations, rotations, scales = visual_instance_poses(
             visual,
@@ -725,9 +1111,34 @@ def _log_g1_mesh_instances(
         )
 
 
+def _log_closeup_mesh_instances(
+    rr: Any,
+    data: Stage1Visualization,
+    key: str,
+    transforms: dict[str, np.ndarray],
+    frame: int,
+) -> None:
+    for index, visual in enumerate(data.robot_visuals):
+        pose = transforms[visual.link_name][frame] @ visual.origin
+        rr.log(
+            _closeup_mesh_entity(key, index, visual),
+            rr.InstancePoses3D(
+                translations=[pose[:3, 3]],
+                mat3x3=[pose[:3, :3]],
+                scales=[visual.scale],
+            ),
+        )
+
+
 def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
     for root in ("grid", "world", "root_frame", "seeds"):
         rr.log(root, rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
+    for style in _active_styles(data):
+        rr.log(
+            f"closeups/{style.key}",
+            rr.ViewCoordinates.RIGHT_HAND_Z_UP,
+            static=True,
+        )
 
     world_human = _world_aligned_human(data)
     human_root_path = world_human[:, 0]
@@ -745,7 +1156,7 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
         ),
         static=True,
     )
-    for style in METHOD_STYLES:
+    for style in _active_styles(data):
         method = data.methods[style.key]
         world = _world_aligned_robot(method)
         root_path = world[:, ROBOT_SEMANTIC_INDEX["root"]]
@@ -758,7 +1169,7 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
             ),
             static=True,
         )
-        if style.operating_point:
+        if style.operating_point or style.external_reference:
             rr.log(
                 f"world/{style.key}/root_path",
                 rr.LineStrips3D([root_path], colors=style.color, radii=0.008),
@@ -773,17 +1184,492 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
             f"- Frames: {data.frame_count}",
             f"- FPS: {data.human.fps:.6f}",
             f"- Human display scale: {data.human_scale:.6f}",
+            f"- Loaded G1 trajectories: {len(data.methods)}",
+            "- External reference: Unitree-attributed corpus (not verified ground truth)",
             "- Green feet: frozen source stance without skating",
             "- Red feet: source stance with target foot speed > 1 cm/s",
             f"- G1 appearance: {len(data.robot_visuals)} articulated Holosoma URDF visual meshes",
             "- Side-by-side view preserves root displacement and ground height",
             "- Root-frame view removes each motion's root translation and yaw",
+            "- Nine close-ups show one articulated G1 trajectory per panel",
+            "- Robot bones/joints are quantitative helpers hidden by default",
             "",
             "The visualization replays measured canonical outputs; it does not rerun a retargeter.",
         ]
     )
     rr.log("metadata/readme", rr.TextDocument(summary, media_type="text/markdown"), static=True)
+    if data.missing_methods:
+        skipped = "\n".join(
+            [
+                "# Diagnostic-only incomplete recording",
+                "",
+                "The following registered methods were explicitly skipped:",
+                *[f"- `{key}`: {reason}" for key, reason in data.missing_methods.items()],
+                "",
+                "This recording is not complete Stage 1 visualization evidence.",
+            ]
+        )
+        rr.log(
+            "metadata/missing_methods",
+            rr.TextDocument(skipped, media_type="text/markdown"),
+            static=True,
+        )
+    if "unitree-reference" in data.methods:
+        rr.log(
+            "metadata/unitree_reference",
+            rr.TextDocument(
+                "# Unitree-attributed external reference\n\n"
+                "This trajectory is a coordinate-canonicalized external reference corpus "
+                "entry. It is not treated as verified ground truth, an optimization "
+                "method, or a runtime operating point. Per-frame evaluator signals remain "
+                "available in the metric tabs, but the robot label never calls the "
+                "reference an artifact.",
+                media_type="text/markdown",
+            ),
+            static=True,
+        )
     _log_g1_mesh_assets(rr, data)
+
+
+def _rerun_cli_prefix() -> tuple[str, ...]:
+    configured = os.environ.get("RTCMP_RERUN_CLI")
+    if configured:
+        prefix = tuple(shlex.split(configured))
+        if not prefix:
+            raise RuntimeError("RTCMP_RERUN_CLI is empty")
+        return prefix
+    executable = shutil.which("rerun")
+    if executable:
+        return (executable,)
+    for candidate in (
+        Path.home() / "anaconda3/envs/vis/bin/rerun",
+        Path.home() / "miniconda3/envs/vis/bin/rerun",
+    ):
+        if candidate.is_file():
+            return (str(candidate),)
+    conda = shutil.which("conda")
+    if conda:
+        return (conda, "run", "-n", "vis", "rerun")
+    raise RuntimeError(
+        "Rerun CLI is required for `rerun rrd verify`; activate the vis environment "
+        "or set RTCMP_RERUN_CLI"
+    )
+
+
+def _run_rerun_cli(arguments: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+    command = (*_rerun_cli_prefix(), *arguments)
+    environment = dict(os.environ)
+    # Analytics are irrelevant to local artifact verification and can attempt
+    # to write outside a restricted workspace.
+    environment.setdefault("RERUN_ANALYTICS", "disabled")
+    return subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+
+def _number_from_rerun(value: str) -> int:
+    digits = "".join(character for character in value if character.isdigit())
+    if not digits:
+        raise ValueError(f"Rerun statistic is not an integer: {value!r}")
+    return int(digits)
+
+
+def _parse_rerun_stats(text: str) -> dict[str, Any]:
+    scalars: dict[str, int] = {}
+    entities: dict[str, int] = {}
+    components: dict[str, int] = {}
+    section = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "Num chunks per entity":
+            section = "entities"
+            continue
+        if stripped == "Num chunks per component":
+            section = "components"
+            continue
+        if stripped and set(stripped) == {"-"}:
+            continue
+        match = re.fullmatch(r"(num_[a-z_]+)\s*=\s*([\d\s,_\u2009]+)(?:\s.*)?", stripped)
+        if match:
+            scalars.setdefault(
+                match.group(1), _number_from_rerun(match.group(2))
+            )
+            continue
+        pair = re.fullmatch(r"(.+):\s*([\d\s,._\u2009]+)", stripped)
+        if not pair:
+            if stripped and not stripped.startswith("("):
+                section = ""
+            continue
+        if section == "entities" and pair.group(1).startswith("/"):
+            entities[pair.group(1)] = _number_from_rerun(pair.group(2))
+        elif section == "components":
+            components[pair.group(1)] = _number_from_rerun(pair.group(2))
+    return {"scalars": scalars, "entities": entities, "components": components}
+
+
+def _rrd_entity_rows_and_components(recording: Path, entity: str) -> tuple[int, str]:
+    printed = _run_rerun_cli(("rrd", "print", "-vv", "--entity", entity, str(recording)))
+    if printed.returncode != 0:
+        raise RuntimeError(
+            f"Rerun could not inspect {entity}: {printed.stderr.strip()}"
+        )
+    row_pattern = re.compile(
+        r"Chunk\([^\n]+\) with\s+([\d\s,._\u2009]+)\s+rows[^\n]*"
+        + r"-\s*"
+        + re.escape(entity)
+        + r"(?:\s+-)?\s*$",
+        flags=re.MULTILINE,
+    )
+    rows = sum(_number_from_rerun(value) for value in row_pattern.findall(printed.stdout))
+    if rows <= 0:
+        raise ValueError(f"Rerun entity {entity} has no inspectable rows")
+    return rows, printed.stdout
+
+
+def inspect_rerun_recording(
+    recording: str | Path,
+    *,
+    frames: int,
+    methods: tuple[str, ...] = EXPECTED_TRAJECTORY_KEYS,
+    robot_visual_asset_count: int = 35,
+) -> dict[str, Any]:
+    """Run the Rerun CLI verifier and assert the scientific view structure."""
+
+    path = Path(recording).resolve()
+    if not path.is_file() or path.stat().st_size < 1_000_000:
+        raise ValueError("Rerun recording is missing or implausibly small")
+    verified = _run_rerun_cli(
+        ("rrd", "verify", "--check-footers", "true", str(path))
+    )
+    if verified.returncode != 0:
+        raise ValueError(
+            "`rerun rrd verify` rejected the recording: "
+            + (verified.stderr.strip() or verified.stdout.strip())
+        )
+    stats_process = _run_rerun_cli(("rrd", "stats", str(path)))
+    if stats_process.returncode != 0:
+        raise ValueError(
+            "`rerun rrd stats` rejected the recording: "
+            + (stats_process.stderr.strip() or stats_process.stdout.strip())
+        )
+    parsed = _parse_rerun_stats(stats_process.stdout)
+    entities: dict[str, int] = parsed["entities"]
+    components: dict[str, int] = parsed["components"]
+
+    exact_grid_methods = {
+        match.group(1)
+        for entity in entities
+        if (match := re.fullmatch(r"/grid/([^/]+)/bones", entity)) is not None
+        and match.group(1) != "source-human"
+    }
+    if exact_grid_methods != set(methods):
+        raise ValueError(
+            f"Rerun grid trajectory set is {sorted(exact_grid_methods)}, "
+            f"expected {sorted(methods)}"
+        )
+    exact_closeups = {
+        match.group(1)
+        for entity in entities
+        if (
+            match := re.fullmatch(
+                r"/closeups/([^/]+)/g1_visual_meshes/00_[^/]+", entity
+            )
+        )
+        is not None
+    }
+    if exact_closeups != set(methods):
+        raise ValueError("Rerun does not contain exactly one G1 close-up per trajectory")
+
+    # Asset link names come from the frozen URDF, so verify their exact count by
+    # coordinate-space prefix rather than duplicating that asset list here.
+    required_entities = {"/metadata/frame_marker"}
+    for view in VIEW_METHOD_KEYS:
+        count = sum(
+            entity.startswith(f"/{view}/g1_visual_meshes/") for entity in entities
+        )
+        if count != robot_visual_asset_count:
+            raise ValueError(f"Rerun {view} contains {count} G1 mesh entities")
+    for key in methods:
+        count = sum(
+            entity.startswith(f"/closeups/{key}/g1_visual_meshes/")
+            for entity in entities
+        )
+        if count != robot_visual_asset_count:
+            raise ValueError(f"Rerun close-up {key} contains {count} G1 mesh entities")
+        required_entities.update(
+            {
+                f"/grid/{key}/bones",
+                f"/grid/{key}/joints",
+                f"/closeups/{key}/{key}/bones",
+                f"/closeups/{key}/{key}/joints",
+                f"/metrics/rf_kpe_all/{key}",
+            }
+        )
+    missing = sorted(required_entities - set(entities))
+    if missing:
+        raise ValueError(f"Rerun required entities are missing: {missing}")
+
+    required_components = {
+        "Asset3D:blob",
+        "Asset3D:media_type",
+        "InstancePoses3D:translations",
+        "InstancePoses3D:mat3x3",
+        "InstancePoses3D:scales",
+        "LineStrips3D:strips",
+        "Points3D:positions",
+        "Scalars:scalars",
+    }
+    if not required_components.issubset(components):
+        raise ValueError(
+            "Rerun component set is incomplete: "
+            + ", ".join(sorted(required_components - set(components)))
+        )
+
+    marker_rows, marker_dump = _rrd_entity_rows_and_components(
+        path, "/metadata/frame_marker"
+    )
+    if marker_rows != frames or "Scalars:scalars" not in marker_dump:
+        raise ValueError(
+            f"Rerun frame marker has {marker_rows} rows, expected {frames}"
+        )
+    view_instance_counts = {
+        view: sum(key in methods for key in keys)
+        for view, keys in VIEW_METHOD_KEYS.items()
+    }
+    representative_mesh_rows: dict[str, int] = {}
+    for view, instance_count in view_instance_counts.items():
+        representative_mesh = next(
+            entity
+            for entity in entities
+            if entity.startswith(f"/{view}/g1_visual_meshes/00_")
+        )
+        mesh_rows, mesh_dump = _rrd_entity_rows_and_components(
+            path, representative_mesh
+        )
+        representative_mesh_rows[view] = mesh_rows
+        if mesh_rows != 1 + frames * instance_count or not {
+            "Asset3D:blob",
+            "InstancePoses3D:translations",
+        }.issubset(
+            set(
+                re.findall(
+                    r"(?:Asset3D|InstancePoses3D):[a-z0-9_]+", mesh_dump
+                )
+            )
+        ):
+            raise ValueError(
+                f"Rerun {view} mesh rows do not encode exactly "
+                f"{instance_count} robot instances per frame"
+            )
+    representative_closeup = next(
+        entity
+        for entity in entities
+        if entity.startswith(f"/closeups/{methods[0]}/g1_visual_meshes/00_")
+    )
+    closeup_rows, closeup_dump = _rrd_entity_rows_and_components(
+        path, representative_closeup
+    )
+    if closeup_rows != frames + 1 or "InstancePoses3D:translations" not in closeup_dump:
+        raise ValueError("Rerun close-up does not contain one G1 instance per frame")
+    representative_mesh_rows["closeup_per_method"] = closeup_rows
+    metric_entity = f"/metrics/rf_kpe_all/{methods[0]}"
+    metric_rows, metric_dump = _rrd_entity_rows_and_components(path, metric_entity)
+    if metric_rows != frames + 1 or not {
+        "SeriesLines:names",
+        "Scalars:scalars",
+    }.issubset(set(re.findall(r"(?:SeriesLines|Scalars):[a-z0-9_]+", metric_dump))):
+        raise ValueError("Rerun metric entity lacks its style or full frame series")
+
+    return {
+        "result": "verified",
+        "verify_command": "rerun rrd verify --check-footers true",
+        "stats_command": "rerun rrd stats",
+        "stats_sha256": hashlib.sha256(stats_process.stdout.encode()).hexdigest(),
+        "num_chunks": parsed["scalars"].get("num_chunks"),
+        "num_entity_paths": parsed["scalars"].get("num_entity_paths"),
+        "num_rows": parsed["scalars"].get("num_rows"),
+        "num_static": parsed["scalars"].get("num_static"),
+        "frame_marker_rows": marker_rows,
+        "representative_mesh_rows": representative_mesh_rows,
+        "representative_metric_rows": metric_rows,
+        "verified_view_instance_counts": {
+            **view_instance_counts,
+            "closeups": len(methods),
+        },
+        "required_component_counts": {
+            key: components[key] for key in sorted(required_components)
+        },
+        "exact_grid_trajectory_set": sorted(exact_grid_methods),
+        "exact_closeup_trajectory_set": sorted(exact_closeups),
+    }
+
+
+def validate_rerun_manifest_contract(
+    repo_root: str | Path,
+    manifest: str | Path = "manifests/rerun_visualization.json",
+    *,
+    verify_recording: bool = True,
+) -> dict[str, Any]:
+    """Fail closed on stale paths, tampered bytes, or a fake/incomplete RRD."""
+
+    root = Path(repo_root).resolve()
+    manifest_path = Path(manifest)
+    if not manifest_path.is_absolute():
+        manifest_path = root / manifest_path
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or int(value.get("schema_version", 0)) != 5:
+        raise ValueError("Rerun manifest schema v5 is required")
+    if value.get("methods") != list(EXPECTED_TRAJECTORY_KEYS):
+        raise ValueError("Rerun manifest does not contain the exact ordered trajectory set")
+    expected_roles = {
+        key: "external_reference" if key == "unitree-reference" else "retargeter"
+        for key in EXPECTED_TRAJECTORY_KEYS
+    }
+    if value.get("method_roles") != expected_roles:
+        raise ValueError("Rerun method/reference roles are stale")
+    if (
+        value.get("missing_methods") != {}
+        or value.get("complete_registered_method_set") is not True
+        or value.get("stage1_visualization_acceptance_eligible") is not True
+    ):
+        raise ValueError("Rerun manifest is diagnostic or incomplete")
+    if value.get("rendering") != "articulated_g1_visual_meshes":
+        raise ValueError("Rerun manifest does not declare articulated G1 meshes")
+    if value.get("default_robot_rendering") != "full_articulated_g1_mesh":
+        raise ValueError("Rerun default rendering is not the G1 mesh")
+    if value.get("robot_debug_bones_and_joints_default_visible") is not False:
+        raise ValueError("Rerun robot helper skeletons must be hidden by default")
+
+    expected_view_keys = {
+        **{view: list(keys) for view, keys in VIEW_METHOD_KEYS.items()},
+        "closeups": list(CLOSEUP_METHOD_KEYS),
+    }
+    if value.get("view_method_keys") != expected_view_keys:
+        raise ValueError("Rerun view trajectory membership is stale")
+    if value.get("view_robot_instance_counts") != EXPECTED_VIEW_INSTANCE_COUNTS:
+        raise ValueError("Rerun view instance counts are stale")
+    expected_instances = sum(EXPECTED_VIEW_INSTANCE_COUNTS.values())
+    if int(value.get("robot_instances_per_frame", -1)) != expected_instances:
+        raise ValueError("Rerun logical robot instance count is incorrect")
+    visual_count = int(value.get("robot_visual_asset_count", -1))
+    if visual_count != 35 or len(value.get("robot_visual_assets", {})) != visual_count:
+        raise ValueError("Rerun visual asset inventory is incomplete")
+    if int(value.get("robot_mesh_entity_count", -1)) != visual_count * (
+        len(VIEW_METHOD_KEYS) + len(CLOSEUP_METHOD_KEYS)
+    ):
+        raise ValueError("Rerun mesh entity inventory is inconsistent")
+
+    def checked_path(relative: Any, digest: Any) -> Path:
+        candidate = (root / str(relative)).resolve()
+        if not candidate.is_relative_to(root):
+            raise ValueError(f"Rerun evidence path escapes the repository: {relative}")
+        if not candidate.is_file() or sha256_file(candidate) != str(digest):
+            raise ValueError(f"Rerun evidence hash mismatch: {relative}")
+        return candidate
+
+    output = checked_path(value.get("output"), value.get("output_sha256"))
+    if output.stat().st_size != int(value.get("output_size_bytes", -1)):
+        raise ValueError("Rerun recording size is stale")
+    checked_path(
+        value.get("canonical_source", {}).get("path"),
+        value.get("canonical_source", {}).get("sha256"),
+    )
+    checked_path(value.get("canonical_urdf"), value.get("canonical_urdf_sha256"))
+    checked_path(
+        value.get("evaluator_robot", {}).get("path"),
+        value.get("evaluator_robot", {}).get("sha256"),
+    )
+    evaluator = root / "manifests/evaluator.yaml"
+    if value.get("evaluator_protocol_sha256") != sha256_file(evaluator):
+        raise ValueError("Rerun evaluator hash is stale")
+    for path, digest in value["robot_visual_assets"].items():
+        checked_path(path, digest)
+
+    sequence_id = str(value.get("sequence_id"))
+    bindings = value.get("method_evidence_bindings", {})
+    if set(bindings) != set(EXPECTED_TRAJECTORY_KEYS):
+        raise ValueError("Rerun method evidence binding set is incomplete")
+    for key in EXPECTED_TRAJECTORY_KEYS:
+        binding = bindings[key]
+        if (
+            binding.get("verified") is not True
+            or binding.get("run_directory_registry_key") != key
+            or binding.get("run_directory") != STAGE1_RUN_DIRECTORIES[key]
+        ):
+            raise ValueError(f"Rerun binding registry is stale for {key}")
+        without_digest = dict(binding)
+        digest = without_digest.pop("binding_sha256", None)
+        if digest != _canonical_json_sha256(without_digest):
+            raise ValueError(f"Rerun binding digest is stale for {key}")
+        output_binding = binding["output"]
+        expected_output = _run_output_path(root, sequence_id, key)
+        if (root / output_binding["path"]).resolve() != expected_output.resolve():
+            raise ValueError(f"Rerun binding resolves a stale output for {key}")
+        checked_path(output_binding["path"], output_binding["sha256"])
+        if output_binding["sha256"] != value["method_outputs"][key]:
+            raise ValueError(f"Rerun output digest maps disagree for {key}")
+        metric_binding = binding["per_frame_metrics"]
+        if (root / metric_binding["path"]).resolve() != _metric_path(root, key).resolve():
+            raise ValueError(f"Rerun binding resolves stale metrics for {key}")
+        checked_path(metric_binding["path"], metric_binding["sha256"])
+        if metric_binding["sha256"] != value["method_metrics"][key]:
+            raise ValueError(f"Rerun metric digest maps disagree for {key}")
+        for section in (
+            "metrics_summary",
+            "publication_binding_table",
+            "source",
+            "evaluator",
+            "robot",
+        ):
+            entry = binding[section]
+            for path_key, digest_key in (
+                ("path", "sha256"),
+                ("canonical_urdf_path", "canonical_urdf_sha256"),
+                ("evaluator_xml_path", "evaluator_xml_sha256"),
+            ):
+                if path_key in entry and digest_key in entry:
+                    checked_path(entry[path_key], entry[digest_key])
+        if binding["source"]["canonical_package_sha256"] != sha256_file(
+            root / binding["source"]["path"]
+        ):
+            raise ValueError(f"Rerun source package binding is stale for {key}")
+    if value.get("method_evidence_bundle_sha256") != _canonical_json_sha256(bindings):
+        raise ValueError("Rerun evidence bundle digest is stale")
+
+    frames = int(value.get("frames_logged", -1))
+    pilot = load_yaml(root / "manifests/pilot_sequence.yaml")
+    if frames != int(pilot["num_frames"]) or int(value.get("stride", -1)) != 1:
+        raise ValueError("Rerun timeline is incomplete")
+    recorded_verification = value.get("rrd_verification", {})
+    if recorded_verification.get("result") != "verified":
+        raise ValueError("Rerun manifest lacks CLI verification evidence")
+    if recorded_verification.get("verified_view_instance_counts") != (
+        EXPECTED_VIEW_INSTANCE_COUNTS
+    ):
+        raise ValueError("Rerun CLI evidence does not prove exact view instance counts")
+    if not verify_recording:
+        return recorded_verification
+    current = inspect_rerun_recording(
+        output,
+        frames=frames,
+        methods=EXPECTED_TRAJECTORY_KEYS,
+        robot_visual_asset_count=visual_count,
+    )
+    for key in (
+        "frame_marker_rows",
+        "representative_mesh_rows",
+        "representative_metric_rows",
+        "verified_view_instance_counts",
+        "exact_grid_trajectory_set",
+        "exact_closeup_trajectory_set",
+    ):
+        if current.get(key) != recorded_verification.get(key):
+            raise ValueError(f"Rerun verification evidence changed for {key}")
+    return current
 
 
 def write_rerun_recording(
@@ -866,6 +1752,7 @@ def write_rerun_recording(
     for frame in frames:
         rr.set_time("frame", sequence=frame)
         rr.set_time("time", duration=float(data.human.timestamps[frame]))
+        rr.log("metadata/frame_marker", rr.Scalars(float(frame)))
         source_foot_colors = [
             (64, 196, 117) if bool(data.human.foot_contact_labels[frame, side]) else (126, 136, 151)
             for side in range(2)
@@ -901,10 +1788,9 @@ def write_rerun_recording(
             source_foot_colors,
         )
 
-        for style in METHOD_STYLES:
+        for style in _active_styles(data):
             method = data.methods[style.key]
-            cause = _artifact_label(method, frame)
-            label = style.display_name + (f" · {cause}" if cause else "")
+            label = _frame_label(style, method, frame)
             feet = _foot_colors(method, frame)
             _log_pose(
                 rr,
@@ -916,7 +1802,7 @@ def write_rerun_recording(
                 foot_indices,
                 feet,
             )
-            if style.operating_point:
+            if style.operating_point or style.external_reference:
                 _log_pose(
                     rr,
                     f"world/{style.key}",
@@ -948,6 +1834,23 @@ def write_rerun_recording(
                     foot_indices,
                     feet,
                 )
+            _log_pose(
+                rr,
+                f"closeups/{style.key}/{style.key}",
+                root_methods[style.key][frame],
+                ROBOT_BONE_INDICES,
+                style,
+                label,
+                foot_indices,
+                feet,
+            )
+            _log_closeup_mesh_instances(
+                rr,
+                data,
+                style.key,
+                root_link_transforms[style.key],
+                frame,
+            )
 
             metric_paths = {
                 "rf_kpe_all": "rf_kpe_all_m",
@@ -958,6 +1861,8 @@ def write_rerun_recording(
                 "solve_time": "solve_time_s",
             }
             for metric_root, field in metric_paths.items():
+                if style.external_reference and metric_root == "solve_time":
+                    continue
                 rr.log(
                     f"metrics/{metric_root}/{style.key}",
                     rr.Scalars(_method_metric(data, style.key, field, frame)),
@@ -994,33 +1899,65 @@ def write_rerun_recording(
         )
 
     rr.disconnect()
+    active_styles = _active_styles(data)
+    view_method_keys = {
+        view: _active_view_method_keys(data, view) for view in VIEW_METHOD_KEYS
+    }
+    closeup_method_keys = tuple(
+        key for key in CLOSEUP_METHOD_KEYS if key in data.methods
+    )
     result: dict[str, Any] = {
-        "schema_version": 3,
+        "schema_version": 5,
         "sequence_id": data.sequence["sequence_id"],
         "source_sha256": data.human.source_sha256,
+        "canonical_source": {
+            "path": data.source_path.relative_to(data.repo_root).as_posix(),
+            "sha256": sha256_file(data.source_path),
+        },
         "evaluator_protocol_sha256": sha256_file(
-            data.repo_root / "manifests" / "evaluator.yaml"
+            data.evaluator_path
         ),
+        "evaluator_robot": {
+            "path": data.evaluator_robot_path.relative_to(data.repo_root).as_posix(),
+            "sha256": sha256_file(data.evaluator_robot_path),
+        },
         "rerun_version": rr.__version__,
         "recording_id": _recording_id(data),
         "frames_logged": len(frames),
         "frame_start": frames[0] if frames else None,
         "frame_end_inclusive": frames[-1] if frames else None,
         "stride": stride,
-        "methods": [style.key for style in METHOD_STYLES],
+        "methods": [style.key for style in active_styles],
+        "method_roles": {
+            style.key: "external_reference" if style.external_reference else "retargeter"
+            for style in active_styles
+        },
+        "missing_methods": data.missing_methods,
+        "complete_registered_method_set": not data.missing_methods,
+        "stage1_visualization_acceptance_eligible": (
+            not data.missing_methods
+            and tuple(style.key for style in active_styles)
+            == EXPECTED_TRAJECTORY_KEYS
+            and frames == list(range(data.frame_count))
+            and stride == 1
+        ),
+        "method_evidence_bindings": {
+            style.key: data.methods[style.key].evidence_binding
+            for style in active_styles
+        },
         "method_outputs": {
-            style.key: sha256_file(
-                data.repo_root
-                / "runs"
-                / data.sequence["sequence_id"]
-                / STAGE1_RUN_DIRECTORIES[style.key]
-                / "canonical_g1.npz"
-            )
-            for style in METHOD_STYLES
+            style.key: sha256_file(data.methods[style.key].output_path)
+            for style in active_styles
+        },
+        "method_metrics": {
+            style.key: sha256_file(data.methods[style.key].metrics_path)
+            for style in active_styles
         },
         "canonical_urdf": str(data.urdf_path.relative_to(data.repo_root)),
         "canonical_urdf_sha256": sha256_file(data.urdf_path),
         "rendering": "articulated_g1_visual_meshes",
+        "default_robot_rendering": "full_articulated_g1_mesh",
+        "robot_debug_bones_and_joints_default_visible": False,
         "robot_visual_asset_count": len(data.robot_visuals),
         "robot_visual_assets": {
             visual.mesh_path.relative_to(data.repo_root).as_posix(): sha256_file(
@@ -1028,14 +1965,36 @@ def write_rerun_recording(
             )
             for visual in data.robot_visuals
         },
-        "robot_instances_per_frame": sum(len(keys) for keys in VIEW_METHOD_KEYS.values()),
+        "view_method_keys": {
+            **{view: list(keys) for view, keys in view_method_keys.items()},
+            "closeups": list(closeup_method_keys),
+        },
+        "view_robot_instance_counts": {
+            **{view: len(keys) for view, keys in view_method_keys.items()},
+            "closeups": len(closeup_method_keys),
+        },
+        "robot_instances_per_frame": (
+            sum(len(keys) for keys in view_method_keys.values())
+            + len(closeup_method_keys)
+        ),
+        "robot_mesh_entity_count": len(data.robot_visuals)
+        * (len(VIEW_METHOD_KEYS) + len(closeup_method_keys)),
         "output": str(output_path) if output_path is not None else None,
     }
+    result["method_evidence_bundle_sha256"] = _canonical_json_sha256(
+        result["method_evidence_bindings"]
+    )
     if output_path is not None:
         if not output_path.is_file() or output_path.stat().st_size == 0:
             raise RuntimeError(f"Rerun recording was not written: {output_path}")
         result["output_size_bytes"] = output_path.stat().st_size
         result["output_sha256"] = sha256_file(output_path)
+        result["rrd_verification"] = inspect_rerun_recording(
+            output_path,
+            frames=len(frames),
+            methods=tuple(style.key for style in active_styles),
+            robot_visual_asset_count=len(data.robot_visuals),
+        )
         atomic_write_json(output_path.with_suffix(output_path.suffix + ".json"), result)
     return result
 
@@ -1049,13 +2008,30 @@ def visualize_stage1(
     spawn: bool = False,
     max_frames: int | None = None,
     stride: int = 1,
+    skip_missing_methods: bool = False,
 ) -> dict[str, Any]:
-    data = load_stage1_visualization(repo_root, sequence_manifest)
+    data = load_stage1_visualization(
+        repo_root,
+        sequence_manifest,
+        skip_missing_methods=skip_missing_methods,
+    )
+    root = Path(repo_root).resolve()
+    if data.missing_methods and manifest is not None:
+        requested_manifest = Path(manifest)
+        if not requested_manifest.is_absolute():
+            requested_manifest = root / requested_manifest
+        acceptance_manifest = root / "manifests" / "rerun_visualization.json"
+        if requested_manifest.resolve() == acceptance_manifest.resolve():
+            raise ValueError(
+                "A diagnostic recording with skipped methods cannot write the "
+                "Stage 1 acceptance manifest. Set manifest=None or choose a "
+                "separate diagnostic manifest path."
+            )
     output_path: Path | None = None
     if output is not None:
         output_path = Path(output)
         if not output_path.is_absolute():
-            output_path = Path(repo_root).resolve() / output_path
+            output_path = root / output_path
     result = write_rerun_recording(
         data,
         output_path,
@@ -1066,11 +2042,11 @@ def visualize_stage1(
     if manifest is not None:
         manifest_path = Path(manifest)
         if not manifest_path.is_absolute():
-            manifest_path = Path(repo_root).resolve() / manifest_path
+            manifest_path = root / manifest_path
         portable = dict(result)
         if output_path is not None:
             try:
-                portable["output"] = output_path.relative_to(Path(repo_root).resolve()).as_posix()
+                portable["output"] = output_path.relative_to(root).as_posix()
             except ValueError:
                 portable["output"] = str(output_path)
         atomic_write_json(manifest_path, portable)

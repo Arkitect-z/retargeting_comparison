@@ -2,8 +2,8 @@ upstream_reference:
   repository: https://github.com/YanjieZe/GMR.git
   commit: bb1bbe40774794fceb2a7c579a3464a28e68c844
   config: general_motion_retargeting/ik_configs/bvh_lafan1_to_g1.json
-robot_xml: external/GMR/assets/unitree_g1/g1_mocap_29dof.xml
-benchmark_revision: controlled-v3-common-scale-root-anchor-temporal
+robot_xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml
+benchmark_revision: controlled-v6-shared-landmark-ls-canonical-holosoma-g1
 common:
   solver: daqp
   damping: 0.5
@@ -12,14 +12,18 @@ common:
   first_frame_minimum_iterations: 30
   first_frame_maximum_iterations: 50
   improvement_tolerance: 0.001
-  # Frozen evaluator-v2 neutral-G1/source landmark calibration.  Both task
-  # groups deliberately use the same value; native public-method scales are
-  # reported separately rather than leaking into this controlled comparison.
-  # The method-independent rigid root anchor is loaded from evaluator.yaml;
-  # it aligns the scaled source frame-0 pelvis with the neutral G1 pelvis.
-  position_scale_root_torso_legs: 0.7420370439847394
-  position_scale_arms: 0.7420370439847394
+  # Evaluator-v3 freezes these as three separate policy variables.  Root and
+  # local gains intentionally start at the same registered LS value but are
+  # independently perturbed in the scale-response experiment.  The anchor is
+  # loaded from evaluator.yaml and fixes frame-0 Hips at neutral G1 pelvis.
+  root_displacement_scale: 0.8280075950863185
+  local_body_scale: 0.8280075950863185
+  # Compatibility aliases for report/config comparisons; both are local-body
+  # scale and are never used as the root-displacement gain.
+  position_scale_root_torso_legs: 0.8280075950863185
+  position_scale_arms: 0.8280075950863185
   posture_cost: 0.0001
+  posture_target: neutral_model_qpos0_for_all_seeds
   temporal_smoothness_cost: 0.001
   root_position_cost: 100.0
   root_yaw_cost: 5.0
@@ -29,26 +33,26 @@ common:
   seed_random_values: {neutral: 0, A: 1101, B: 2202}
 target_sets:
   sparse:
-    - {semantic: root, human_joint: Hips, robot_body: pelvis, position_cost: 100.0, yaw_cost: 5.0, scale_group: root_torso_legs}
-    - {semantic: left_wrist, human_joint: LeftHand, robot_body: left_wrist_yaw_link, position_cost: 10.0, scale_group: arms}
-    - {semantic: right_wrist, human_joint: RightHand, robot_body: right_wrist_yaw_link, position_cost: 10.0, scale_group: arms}
-    - {semantic: left_ankle, human_joint: LeftFoot, robot_body: left_ankle_roll_link, position_cost: 50.0, scale_group: root_torso_legs}
-    - {semantic: right_ankle, human_joint: RightFoot, robot_body: right_ankle_roll_link, position_cost: 50.0, scale_group: root_torso_legs}
+    - {semantic: root, human_joint: Hips, robot_frame: pelvis, robot_frame_type: body, position_cost: 100.0, yaw_cost: 5.0, scale_group: root_torso_legs}
+    - {semantic: left_wrist, human_joint: LeftHand, robot_frame: left_wrist_yaw_link, robot_frame_type: body, position_cost: 10.0, scale_group: arms}
+    - {semantic: right_wrist, human_joint: RightHand, robot_frame: right_wrist_yaw_link, robot_frame_type: body, position_cost: 10.0, scale_group: arms}
+    - {semantic: left_ankle, human_joint: LeftFoot, robot_frame: left_ankle_roll_link, robot_frame_type: body, position_cost: 50.0, scale_group: root_torso_legs}
+    - {semantic: right_ankle, human_joint: RightFoot, robot_frame: right_ankle_roll_link, robot_frame_type: body, position_cost: 50.0, scale_group: root_torso_legs}
   dense:
-    - {semantic: root, human_joint: Hips, robot_body: pelvis, position_cost: 100.0, yaw_cost: 5.0, scale_group: root_torso_legs}
-    - {semantic: torso, human_joint: Spine2, robot_body: torso_link, position_cost: 10.0, scale_group: root_torso_legs}
-    - {semantic: head, human_joint: Head, robot_body: head_mocap, position_cost: 10.0, scale_group: root_torso_legs}
-    - {semantic: left_shoulder, human_joint: LeftArm, robot_body: left_shoulder_yaw_link, position_cost: 5.0, scale_group: arms}
-    - {semantic: right_shoulder, human_joint: RightArm, robot_body: right_shoulder_yaw_link, position_cost: 5.0, scale_group: arms}
-    - {semantic: left_elbow, human_joint: LeftForeArm, robot_body: left_elbow_link, position_cost: 10.0, scale_group: arms}
-    - {semantic: right_elbow, human_joint: RightForeArm, robot_body: right_elbow_link, position_cost: 10.0, scale_group: arms}
-    - {semantic: left_wrist, human_joint: LeftHand, robot_body: left_wrist_yaw_link, position_cost: 10.0, scale_group: arms}
-    - {semantic: right_wrist, human_joint: RightHand, robot_body: right_wrist_yaw_link, position_cost: 10.0, scale_group: arms}
-    - {semantic: left_hip, human_joint: LeftUpLeg, robot_body: left_hip_yaw_link, position_cost: 10.0, scale_group: root_torso_legs}
-    - {semantic: right_hip, human_joint: RightUpLeg, robot_body: right_hip_yaw_link, position_cost: 10.0, scale_group: root_torso_legs}
-    - {semantic: left_knee, human_joint: LeftLeg, robot_body: left_knee_link, position_cost: 10.0, scale_group: root_torso_legs}
-    - {semantic: right_knee, human_joint: RightLeg, robot_body: right_knee_link, position_cost: 10.0, scale_group: root_torso_legs}
-    - {semantic: left_ankle, human_joint: LeftFoot, robot_body: left_ankle_roll_link, position_cost: 50.0, scale_group: root_torso_legs}
-    - {semantic: right_ankle, human_joint: RightFoot, robot_body: right_ankle_roll_link, position_cost: 50.0, scale_group: root_torso_legs}
-    - {semantic: left_toe, human_joint: LeftToe, robot_body: left_toe_link, position_cost: 25.0, scale_group: root_torso_legs}
-    - {semantic: right_toe, human_joint: RightToe, robot_body: right_toe_link, position_cost: 25.0, scale_group: root_torso_legs}
+    - {semantic: root, human_joint: Hips, robot_frame: pelvis, robot_frame_type: body, position_cost: 100.0, yaw_cost: 5.0, scale_group: root_torso_legs}
+    - {semantic: torso, human_joint: Spine2, robot_frame: torso_link, robot_frame_type: body, position_cost: 10.0, scale_group: root_torso_legs}
+    - {semantic: head, human_joint: Head, robot_frame: mid360, robot_frame_type: site, position_cost: 10.0, scale_group: root_torso_legs}
+    - {semantic: left_shoulder, human_joint: LeftArm, robot_frame: left_shoulder_roll_link, robot_frame_type: body, position_cost: 5.0, scale_group: arms}
+    - {semantic: right_shoulder, human_joint: RightArm, robot_frame: right_shoulder_roll_link, robot_frame_type: body, position_cost: 5.0, scale_group: arms}
+    - {semantic: left_elbow, human_joint: LeftForeArm, robot_frame: left_elbow_link, robot_frame_type: body, position_cost: 10.0, scale_group: arms}
+    - {semantic: right_elbow, human_joint: RightForeArm, robot_frame: right_elbow_link, robot_frame_type: body, position_cost: 10.0, scale_group: arms}
+    - {semantic: left_wrist, human_joint: LeftHand, robot_frame: left_wrist_yaw_link, robot_frame_type: body, position_cost: 10.0, scale_group: arms}
+    - {semantic: right_wrist, human_joint: RightHand, robot_frame: right_wrist_yaw_link, robot_frame_type: body, position_cost: 10.0, scale_group: arms}
+    - {semantic: left_hip, human_joint: LeftUpLeg, robot_frame: left_hip_roll_link, robot_frame_type: body, position_cost: 10.0, scale_group: root_torso_legs}
+    - {semantic: right_hip, human_joint: RightUpLeg, robot_frame: right_hip_roll_link, robot_frame_type: body, position_cost: 10.0, scale_group: root_torso_legs}
+    - {semantic: left_knee, human_joint: LeftLeg, robot_frame: left_knee_link, robot_frame_type: body, position_cost: 10.0, scale_group: root_torso_legs}
+    - {semantic: right_knee, human_joint: RightLeg, robot_frame: right_knee_link, robot_frame_type: body, position_cost: 10.0, scale_group: root_torso_legs}
+    - {semantic: left_ankle, human_joint: LeftFoot, robot_frame: left_ankle_roll_link, robot_frame_type: body, position_cost: 50.0, scale_group: root_torso_legs}
+    - {semantic: right_ankle, human_joint: RightFoot, robot_frame: right_ankle_roll_link, robot_frame_type: body, position_cost: 50.0, scale_group: root_torso_legs}
+    - {semantic: left_toe, human_joint: LeftToe, robot_frame: left_foot_contact_point, robot_frame_type: body, position_cost: 25.0, scale_group: root_torso_legs}
+    - {semantic: right_toe, human_joint: RightToe, robot_frame: right_foot_contact_point, robot_frame_type: body, position_cost: 25.0, scale_group: root_torso_legs}

@@ -9,7 +9,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .calibration import build_evaluator_protocol, human_heading_yaw
+from .calibration import (
+    EVALUATOR_SCHEMA_VERSION,
+    build_evaluator_protocol,
+    human_heading_yaw,
+)
 from .robot_model import CanonicalRobotModel
 from .rotations import quaternion_wxyz_to_matrix, yaw_from_matrix
 from .schemas import CanonicalG1, CanonicalHuman
@@ -133,16 +137,49 @@ def evaluate_motion(
         protocol = build_evaluator_protocol(
             human, robot, source_path="in-memory-canonical-source"
         )
-    if int(protocol.get("schema_version", 0)) != 2:
-        raise ValueError("Evaluator protocol v2 is required")
-    scale = float(protocol["scale"]["common_static_scale"])
+    if int(protocol.get("schema_version", 0)) != EVALUATOR_SCHEMA_VERSION:
+        raise ValueError(
+            f"Evaluator protocol v{EVALUATOR_SCHEMA_VERSION} is required"
+        )
     method = str(motion.metadata.get("method", "unknown"))
+    timeline = protocol.get("timeline", {})
+    relative_fps_tolerance = float(
+        timeline.get("accepted_declared_fps_relative_tolerance", 2e-5)
+    )
+    if (
+        not np.isfinite(motion.fps)
+        or abs(float(motion.fps) - float(human.fps)) / float(human.fps)
+        > relative_fps_tolerance
+    ):
+        raise ValueError(
+            "G1 declared fps is incompatible with the canonical source timeline: "
+            f"motion={motion.fps}, source={human.fps}"
+        )
+    declared_source_hash = motion.metadata.get("canonical_source_sha256")
+    if declared_source_hash is not None and declared_source_hash != human.source_sha256:
+        raise ValueError("G1 metadata canonical_source_sha256 does not match the source")
+    if (
+        declared_source_hash is None
+        and motion.metadata.get("method_family") != "external_precomputed_reference"
+        and method != "synthetic"
+    ):
+        raise ValueError("G1 metadata is missing canonical_source_sha256")
+    local_scale = float(protocol["scale"]["common_local_body_scale"])
+    root_scale = float(protocol["scale"]["common_root_displacement_scale"])
     native_scale_entry = protocol.get("native_root_scales", {}).get(method)
     if native_scale_entry is None:
-        native_scale = scale
+        native_scale = root_scale
+        native_scale_xyz = np.full(3, root_scale, dtype=np.float64)
         native_scale_policy = "undeclared; common scale fallback"
+    elif "value_xyz" in native_scale_entry:
+        native_scale_xyz = np.asarray(native_scale_entry["value_xyz"], dtype=np.float64)
+        if native_scale_xyz.shape != (3,) or not np.isfinite(native_scale_xyz).all():
+            raise ValueError("native_root_scales.value_xyz must be three finite values")
+        native_scale = float(np.mean(native_scale_xyz[:2]))
+        native_scale_policy = str(native_scale_entry["policy"])
     else:
         native_scale = float(native_scale_entry["value"])
+        native_scale_xyz = np.full(3, native_scale, dtype=np.float64)
         native_scale_policy = str(native_scale_entry["policy"])
 
     human_yaw = human_heading_yaw(human, frame_indices)
@@ -158,7 +195,7 @@ def evaluate_motion(
         if semantic == "root":
             continue
         errors[semantic] = np.linalg.norm(
-            robot_rf[semantic] - human_rf[semantic] * scale, axis=1
+            robot_rf[semantic] - human_rf[semantic] * local_scale, axis=1
         )
 
     bone_angles = np.stack(
@@ -187,11 +224,11 @@ def evaluate_motion(
     targeted = np.mean(np.stack([errors[name] for name in TARGETED]), axis=0)
     untracked = np.mean(np.stack([errors[name] for name in UNTRACKED]), axis=0)
     all_kpe = np.mean(np.stack(list(errors.values())), axis=0)
-    source_root_delta = (human_root - human_root[0]) * scale
+    source_root_delta = (human_root - human_root[0]) * root_scale
     robot_root_delta = robot_root - robot_root[0]
     root_translation = np.linalg.norm(robot_root_delta - source_root_delta, axis=1)
     native_root_translation = np.linalg.norm(
-        robot_root_delta - (human_root - human_root[0]) * native_scale,
+        robot_root_delta - (human_root - human_root[0]) * native_scale_xyz,
         axis=1,
     )
     human_root_xy = human_root[:, :2] - human_root[0, :2]
@@ -202,16 +239,28 @@ def evaluate_motion(
         if root_xy_energy > 1e-12
         else float("nan")
     )
-    scale_invariant_root_translation = np.linalg.norm(
-        robot_root_delta - (human_root - human_root[0]) * effective_root_scale,
+    # Fit XY path scale only to XY and keep vertical morphology referenced to
+    # the frozen common scale.  Applying an XY fit to Z conflates path shape
+    # with ground and height errors.
+    scale_invariant_root_xy = np.linalg.norm(
+        robot_root_xy - human_root_xy * effective_root_scale,
         axis=1,
+    )
+    root_vertical_common_scale = np.abs(
+        robot_root_delta[:, 2]
+        - (human_root[:, 2] - human_root[0, 2]) * root_scale
+    )
+    scale_invariant_root_translation = np.sqrt(
+        scale_invariant_root_xy**2 + root_vertical_common_scale**2
     )
     yaw_delta = robot_yaw - human_yaw
     yaw_error = np.abs(
         np.arctan2(np.sin(yaw_delta), np.cos(yaw_delta))
     )
 
-    dt = 1.0 / motion.fps
+    # Every method is scored on the canonical source clock.  Rounded nominal
+    # 30 Hz declarations remain provenance only and cannot change a metric.
+    dt = 1.0 / human.fps
     joint_velocity = np.zeros(len(motion.qpos))
     joint_acceleration = np.zeros(len(motion.qpos))
     joint_jerk = np.zeros(len(motion.qpos))
@@ -246,7 +295,10 @@ def evaluate_motion(
     limit_violation = np.zeros(len(motion.qpos))
     for frame, qpos in enumerate(motion.qpos):
         penetration[frame], self_contact_count[frame] = robot.contact_diagnostics(qpos)
-        limit_violation[frame] = robot.joint_limit_violation(qpos)
+        limit_violation[frame] = robot.joint_limit_violation(
+            qpos,
+            tolerance=float(protocol["thresholds"]["joint_limit_tolerance_rad"]),
+        )
     invalid = ~np.asarray(motion.valid, dtype=bool)
     semantic_stack = np.stack(
         [robot_points[name] for name in HUMAN_SEMANTIC_JOINTS if name != "root"], axis=1
@@ -291,9 +343,11 @@ def evaluate_motion(
             "root_translation_common_scale_error_m": root_translation,
             "root_translation_native_scale_error_m": native_root_translation,
             "root_translation_scale_invariant_error_m": scale_invariant_root_translation,
+            "root_translation_scale_invariant_xy_error_m": scale_invariant_root_xy,
+            "root_vertical_common_scale_error_m": root_vertical_common_scale,
             "effective_root_xy_scale": np.full(len(motion.qpos), effective_root_scale),
             "root_scale_bias_fraction": np.full(
-                len(motion.qpos), effective_root_scale / scale - 1.0
+                len(motion.qpos), effective_root_scale / root_scale - 1.0
             ),
             "root_yaw_error_rad": yaw_error,
             "joint_velocity_rms_rad_s": joint_velocity,
@@ -329,33 +383,72 @@ def evaluate_motion(
     )
     summary: dict[str, Any] = {
         "method": method,
-        "evaluator_schema_version": 2,
+        "evaluator_schema_version": EVALUATOR_SCHEMA_VERSION,
         "evaluator_protocol_sha256": protocol.get("manifest_sha256"),
         "frames": int(len(table)),
         "source_frames": int(len(human.timestamps)),
         "completion_ratio": float(len(table) / len(human.timestamps)),
         "completion_status": motion.metadata.get("completion_status"),
-        "static_height_scale": scale,
-        "common_static_scale": scale,
+        "canonical_source_sha256": human.source_sha256,
+        "source_fps": float(human.fps),
+        "method_declared_fps": float(motion.fps),
+        "temporal_metric_fps": float(human.fps),
+        "timeline_policy": timeline.get(
+            "definition", "canonical source timestamps; nominal 30 Hz tolerated"
+        ),
+        "static_height_scale": local_scale,
+        "common_static_scale": local_scale,
+        "common_local_body_scale": local_scale,
+        "common_root_displacement_scale": root_scale,
         "native_root_scale": native_scale,
+        "native_root_scale_x": float(native_scale_xyz[0]),
+        "native_root_scale_y": float(native_scale_xyz[1]),
+        "native_root_scale_z": float(native_scale_xyz[2]),
         "native_root_scale_policy": native_scale_policy,
         "effective_root_xy_scale": effective_root_scale,
-        "root_scale_bias_fraction": effective_root_scale / scale - 1.0,
+        "root_scale_bias_fraction": effective_root_scale / root_scale - 1.0,
         "rf_kpe_all_mean_m": float(table.rf_kpe_all_m.mean()),
         "rf_kpe_all_p95_m": _percentile(table.rf_kpe_all_m.to_numpy(), 95),
         "rf_kpe_targeted_mean_m": float(table.rf_kpe_targeted_m.mean()),
+        "rf_kpe_targeted_p95_m": _percentile(
+            table.rf_kpe_targeted_m.to_numpy(), 95
+        ),
         "rf_kpe_untracked_mean_m": float(table.rf_kpe_untracked_m.mean()),
+        "rf_kpe_untracked_p95_m": _percentile(
+            table.rf_kpe_untracked_m.to_numpy(), 95
+        ),
         "bone_direction_mean_rad": float(table.bone_direction_error_rad.mean()),
+        "bone_direction_p95_rad": _percentile(
+            table.bone_direction_error_rad.to_numpy(), 95
+        ),
         "bend_plane_mean_rad": float(table.bend_plane_error_rad.mean()),
+        "bend_plane_p95_rad": _percentile(
+            table.bend_plane_error_rad.to_numpy(), 95
+        ),
         "root_translation_mean_m": float(table.root_translation_error_m.mean()),
         "root_translation_common_scale_mean_m": float(
             table.root_translation_common_scale_error_m.mean()
         ),
+        "root_translation_common_scale_p95_m": _percentile(
+            table.root_translation_common_scale_error_m.to_numpy(), 95
+        ),
         "root_translation_native_scale_mean_m": float(
             table.root_translation_native_scale_error_m.mean()
         ),
+        "root_translation_native_scale_p95_m": _percentile(
+            table.root_translation_native_scale_error_m.to_numpy(), 95
+        ),
         "root_translation_scale_invariant_mean_m": float(
             table.root_translation_scale_invariant_error_m.mean()
+        ),
+        "root_translation_scale_invariant_p95_m": _percentile(
+            table.root_translation_scale_invariant_error_m.to_numpy(), 95
+        ),
+        "root_translation_scale_invariant_xy_mean_m": float(
+            table.root_translation_scale_invariant_xy_error_m.mean()
+        ),
+        "root_vertical_common_scale_mean_m": float(
+            table.root_vertical_common_scale_error_m.mean()
         ),
         "root_yaw_mean_rad": float(table.root_yaw_error_rad.mean()),
         "root_yaw_p95_rad": _percentile(table.root_yaw_error_rad.to_numpy(), 95),
@@ -376,7 +469,9 @@ def evaluate_motion(
         "joint_jerk_rms_p95_rad_s3": _percentile(
             table.joint_jerk_rms_rad_s3.to_numpy(), 95
         ),
+        "joint_jerk_rms_mean_rad_s3": float(table.joint_jerk_rms_rad_s3.mean()),
         "joint_jerk_rms_max_rad_s3": float(table.joint_jerk_rms_rad_s3.max()),
+        "pose_jump_mean_m": float(table.pose_jump_rms_m.mean()),
         "pose_jump_p95_m": _percentile(table.pose_jump_rms_m.to_numpy(), 95),
         "pose_jump_max_m": float(table.pose_jump_rms_m.max()),
         "foot_skating_frame_rate": float(table.foot_skating.mean()),
@@ -402,6 +497,9 @@ def evaluate_motion(
         "joint_limit_violation_frame_rate": float(
             table.joint_limit_artifact.mean()
         ),
+        "joint_limit_violation_p95_rad": _percentile(
+            table.joint_limit_violation_rad.to_numpy(), 95
+        ),
         "invalid_frame_rate": float(table.invalid_artifact.mean()),
         "artifact_rate": float(table.artifact.mean()),
         "solve_time_median_s": float(table.solve_time_s.median()),
@@ -409,6 +507,33 @@ def evaluate_motion(
         "self_collision_in_primary_metric": False,
         "robot_model_sha256": robot.sha256,
     }
+    native_limit = (
+        motion.metadata.get("joint_limit_diagnostics", {})
+        .get("protomotions_native")
+    )
+    if isinstance(native_limit, dict):
+        summary.update(
+            {
+                "native_joint_limit_diagnostic_available": True,
+                "native_joint_limit_asset_sha256": native_limit.get("urdf_sha256"),
+                "native_joint_limit_violation_frame_rate": float(
+                    native_limit.get("violating_frame_count", 0)
+                )
+                / len(table),
+                "native_joint_limit_max_violation_rad": float(
+                    native_limit.get("maximum_violation_rad", 0.0)
+                ),
+            }
+        )
+    else:
+        summary.update(
+            {
+                "native_joint_limit_diagnostic_available": False,
+                "native_joint_limit_asset_sha256": None,
+                "native_joint_limit_violation_frame_rate": None,
+                "native_joint_limit_max_violation_rad": None,
+            }
+        )
     return table, summary
 
 

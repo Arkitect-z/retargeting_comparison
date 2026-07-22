@@ -1,0 +1,46 @@
+schema_version: 1
+campaign_id: stage1-pilot-formal-timing-v3
+sequence_manifest: manifests/pilot_sequence.yaml
+randomization:
+  generator: numpy.random.Generator.permutation
+  bit_generator: PCG64
+  seed: 20260722
+  population:
+    - sparse-neutral
+    - dense
+    - gmr
+    - omniretarget
+    - protomotions-v2.3
+    - protomotions-v3
+  frozen_order:
+    - sparse-neutral
+    - dense
+    - protomotions-v3
+    - omniretarget
+    - protomotions-v2.3
+    - gmr
+protocol:
+  new_cold_processes: 1
+  warmup_runs: 1
+  measured_warm_runs: 3
+  cpu_threads: 1
+  cpu_affinity: first_allowed_cpu
+  visualization: false
+  end_to_end_boundary: canonical_source_file_to_canonical_g1_in_memory
+  native_boundary: native_input_ready_to_native_g1_in_memory
+  initialization_jit_compile_separate: true
+  intermediate_and_final_artifact_writes_excluded: true
+  canonical_qpos_hash_required_per_repetition: true
+  cold_warm_qpos_determinism_required: true
+  runtime_witness_policy: independent cold solver observation; disabled for warmup/measured
+  overlapping_formal_jobs_forbidden: true
+registered_outputs:
+  sparse-neutral: sparse-neutral-v6
+  dense: dense-v6
+  protomotions-v3: protomotions-v3-v2
+  omniretarget: omniretarget-v3
+  protomotions-v2.3: protomotions-v2.3-v3
+  gmr: gmr-v3
+notes:
+  - Scale-response and interaction jobs are not formal timing jobs and are excluded from the randomized order.
+  - Sparse seeds A/B are null-space diagnostics, not additional operating points in the timing frontier.

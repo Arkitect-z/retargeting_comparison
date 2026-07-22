@@ -1,0 +1,44 @@
+category,metric,value,unit,scope,interpretation
+provenance,revision,ce1572906efe6157840e8474d5a0d7aa87481e74,git_sha,Hugging Face repository,Frozen upstream snapshot
+provenance,pilot_csv_sha256,e2a369e92e5ad076c5acffff7bce53157a0e6cd9e7e9f6a08dadfb1eb2928d8f,sha256,g1/dance1_subject1.csv,Raw file remains ignored
+format,source_rows,3945,frames,complete CSV,Pilot consumes rows 0 through 599
+format,columns,36,values_per_frame,complete CSV,Root XYZ plus XYZW quaternion plus canonical 29-joint order
+timeline,source_fps,30.000300003000028,Hz,frozen canonical human,Parsed BVH frame time
+timeline,reference_fps,30.0,Hz,dataset card,Adapter does not resample
+timeline,pilot_last_timestamp_offset,0.00019966666666348942,s,frame 599,Reference clock minus canonical source clock
+root_xy,effective_similarity_scale,0.7400174555371238,ratio,first 600 frames,Fit after subtracting each first-frame root XY
+root_xy,rotation_r00,0.000325438886280133,unitless,first 600 frames,Proper row-vector similarity rotation
+root_xy,rotation_r01,0.999999947044764,unitless,first 600 frames,Approximately maps source x to reference y
+root_xy,rotation_r10,-0.999999947044764,unitless,first 600 frames,Approximately maps source y to negative reference x
+root_xy,rotation_r11,0.0003254388862802414,unitless,first 600 frames,Proper rotation determinant approximately one
+root_xy,fit_rmse,0.003423789813776521,m,first 600 frames,Strong but not exact similarity relation
+root_xy,fit_max_error,0.014524835869190929,m,first 600 frames,Descriptive residual
+root_xy,reference_first_x,0.000098,m,frame 0,Reference root is anchored close to XY origin
+root_xy,reference_first_y,-0.000161,m,frame 0,Reference root is anchored close to XY origin
+root_xy_full_sequence,effective_similarity_scale,0.7395263790451132,ratio,all 3945 paired frames,Coordinate convention audit only and not a Full-LAFAN method experiment
+root_xy_full_sequence,rotation_residual_from_exact_90deg,0.00015143517417380155,rad,all 3945 paired frames,Supports freezing exact axis permutation instead of fitted angle
+root_xy_full_sequence,fit_rmse,0.012419581303777981,m,all 3945 paired frames,Descriptive fit only
+root_z,linear_slope,0.6976396727299282,ratio,first 600 frames,Vertical relation differs from fitted XY scale
+root_z,linear_intercept,0.15715794784251183,m,first 600 frames,Consistent with an additional vertical offset but not proof of algorithm
+root_z,linear_fit_rmse,0.004260533725109857,m,first 600 frames,Descriptive residual
+asset,reference_urdf_sha256,824ce02c2c1e489aa8dece47a10fe02d1872289c0e6d01ba51abd291e66b7b2c,sha256,revision-pinned corpus asset,Byte identity is not expected
+asset,canonical_scene_sha256,0555862e648ad9b4a1e4e773fa888a7ea6e3795c79b1ebfd7e36c3976615bb24,sha256,canonical evaluator scene,Frozen evaluator asset
+asset,actuated_joint_contract_equivalent,true,boolean,reference URDF versus canonical evaluator URDF,Order/tree/origins/axes/limits all match
+asset,cross_engine_fk_max_position_error,4.730919912540416e-07,m,11 poses times 30 link frames,Reference Pinocchio URDF versus canonical MuJoCo scene
+asset,cross_engine_fk_max_rotation_error,1.456050097978972e-06,rad,11 poses times 30 link frames,Reference Pinocchio URDF versus canonical MuJoCo scene
+asset,holosoma_retargeter_max_origin_difference,0.019,m,actuated URDF joint origins,Default retargeter URDF is not identical to canonical evaluator/reference contract
+asset,holosoma_retargeter_same_qpos_max_fk_difference,0.012011018631222517,m,11 poses times 30 link frames,Maximum occurs at torso_link in deterministic sample set
+ground,canonical_toe_z_min,0.0022243606738490407,m,1200 left/right samples,No semantic toe frame falls below z equals zero
+ground,canonical_toe_z_median,0.012680219090588824,m,1200 left/right samples,Semantic contact frames are not identical to collision surface
+ground,frames_with_floor_penetration,22,frames,canonical evaluator collision model,Collision equivalence to upstream URDF is not established
+ground,max_floor_penetration,0.00574624213967361,m,canonical evaluator collision model,Do not interpret as upstream solver constraint violation without collision-asset qualification
+limits,frames_with_joint_limit_violation,0,frames,canonical evaluator limits,Threshold includes benchmark tolerance
+coordinate_view,as_published_qpos_content_sha256,b0755c087c5187453f5fe5eff874af321a303404124e01deba627c0f1ff77f27,sha256,Pilot canonical qpos content,Stable hash excludes NPZ container metadata
+coordinate_view,canonical_coordinate_qpos_content_sha256,c2ad1eafaf229c52fa1b65baeb0e5318ec61420cb53f03929db2bdf502f8c958,sha256,Pilot canonical qpos content,Fixed Rz minus pi over two and no scale
+coordinate_view,as_published_root_common_scale_error,2.292015515958924,m,600-frame evaluator summary,Axis convention is intentionally unnormalized
+coordinate_view,canonical_root_common_scale_error,0.006835408075073988,m,600-frame evaluator summary,Formal quality view after fixed coordinate conversion
+coordinate_view,as_published_root_yaw_error,1.5478567686754385,rad,600-frame evaluator summary,Approximately pi over two convention offset
+coordinate_view,canonical_root_yaw_error,0.03841546203785537,rad,600-frame evaluator summary,Formal quality view after fixed coordinate conversion
+coordinate_view,as_published_effective_root_xy_scale,0.00024083045655797148,ratio,600-frame evaluator summary,Invalid as a scale diagnostic because axes are crossed
+coordinate_view,canonical_effective_root_xy_scale,0.740017416349325,ratio,600-frame evaluator summary,No scale was applied by coordinate conversion
+coordinate_view,rf_kpe_all_both_views,0.11027856296529255,m,600-frame evaluator summary,Root-frame pose metric is invariant to the consistent global yaw conversion

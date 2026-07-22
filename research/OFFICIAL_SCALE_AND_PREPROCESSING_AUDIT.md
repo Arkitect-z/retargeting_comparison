@@ -73,7 +73,7 @@ official path exists for the controlled benchmark itself.
 | Actor `betas` | N/A | used in SMPL-X FK; `beta[0]` also drives height proxy | used in neutral SMPL-X FK and mesh-height measurement | read, then overwritten with zero | not read by raw converter; fixed static skeleton | read, then ignored for motion fitting |
 | Actor gender | N/A | selects male/female/neutral SMPL-X | official tested domain is neutral; current preprocessing effectively neutral-only | read, then ignored; neutral proxy used | not read at runtime | read, then ignored; neutral proxy used |
 | Human height | benchmark-defined semantic geometry | `1.66 + 0.1 * beta[0]` | T-pose neutral SMPL-X mesh vertical extent | no actor-height estimate | no actor-height normalization | robot-fitted neutral SMPL shape plus one fitted scalar |
-| Scale family | common registered scale | actor-dependent body-region scale | actor-height-normalizing uniform scale | fixed world-axis anisotropic scale | fixed region/axis pre-scale plus optimized robot-pair scales | fitted uniform local skeleton scale |
+| Scale family | common shared-semantic-landmark LS (head/toe diagnostic only) | actor-dependent body-region scale | actor-height-normalizing uniform scale | fixed world-axis anisotropic scale | fixed region/axis pre-scale plus optimized robot-pair scales | fitted uniform local skeleton scale |
 | Root translation | benchmark rule | scaled by root-region factor about world origin; batch output later XY-reanchored | uniformly scaled with all targets after source grounding | all world coordinates, including root, multiplied by `[0.75, 1.0, 0.8]` | root/lower local target construction uses `[0.9, 0.9, 0.85]` | source metric root path retained; only one constant root offset is optimized |
 | Orientations | benchmark task-dependent | global joint orientations are explicit IK targets | discarded after SMPL-X FK; position-only representation | read and assigned a tiny `1e-4` cost | used for conversion/surgery/root initialization, not a full-body orientation residual | source root reduced to heading; position loss dominates |
 | Temporal policy | exact canonical timestamps | interpolation/SLERP using an integer ratio with edge cases | integer stride, then metadata hard-coded to 30 Hz | integer stride, then hard-coded to 30 Hz | selects a source-rate divisor; default retarget buffer is 450 but CLI supports 600 | integer stride, hard-coded to 30 Hz |
@@ -203,8 +203,10 @@ origin by
 
 This is neither a height normalization nor a robot-derived similarity scale.
 The target set contains 14 semantic points and hand/head auxiliary offsets.
-Orientation costs are `1e-4` relative to position costs of order 10, so the
-operating point is effectively position-driven. G1 has configuration limits
+The upstream AMASS orientation cost is `1e-4` relative to position costs of
+order 10. For the canonical-LAFAN port it is explicitly set to zero because BVH
+joint frames have not been validated as SMPL-X segment frames; this is a
+benchmark adapter intervention, not an unchanged upstream LAFAN path. G1 has configuration limits
 but no contact or G1 velocity objective. The output post-process aligns each
 frame's robot lowest body point to the corresponding *unscaled* human lowest
 joint, which can inject root-z changes and must be reported separately.
@@ -412,7 +414,7 @@ Use one Dense Mink solver, the canonical G1 asset, fixed targets/weights/limits,
 fixed root anchor, fixed timestamps, and fixed canonical contacts. Change only
 the target scale constructor. Required policy transplants are:
 
-- common registered similarity policy;
+- shared semantic landmark least-squares policy;
 - Holosoma LAFAN uniform policy;
 - GMR region-wise policy;
 - ProtoMotions v2.3 world-axis policy; and
@@ -454,27 +456,46 @@ geometry and record how many labels/constraints would change under native
 recomputation. A separately named recomputed-contact arm is required if the
 label-flip rate is nonzero enough to affect conclusions.
 
-### Common scale definition
+### Common scale definition — conformance correction, 2026-07-22
 
-The controlled policy must not inherit a method's handwritten "height". Freeze
-one root-relative least-squares similarity scale from shared semantic landmarks
-between the canonical source rest/reference geometry and neutral canonical G1:
+The controlled policy does not inherit any method's handwritten "height". The
+Stage 1 formal common scale now follows the registered estimator in task-prompt
+Section 6.7:
 
 \[
-s^*=\arg\min_s\sum_k w_k\|s(h_k-h_{root})-(r_k-r_{root})\|^2.
+s^*=\frac{\sum_k w_k(h_k-h_{root})^T(r_k-r_{root})}
+{\sum_k w_k\|h_k-h_{root}\|^2}
+=0.8280075950863185.
 \]
 
-Report head-to-toe span as a diagnostic, not as the optimization definition.
-Root-path scale and root anchor remain independent registered factors. The
-existing `0.742037044` first-frame head/toe scale is retained as legacy Pilot
-evidence but is not automatically promoted to this revised controlled target
-without the new registration manifest.
+The source vectors use frame-0 Hips as origin and remove the geometry-derived
+body heading; robot vectors use the neutral canonical Holosoma G1 pelvis and
++X-forward frame. The equal-weight registered set is head, bilateral
+shoulder/hip/knee/ankle/toe. LAFAN Spine2 versus G1 torso-link origins are not
+homologous, and distal arms are excluded because source frame-0 and neutral-G1
+arm poses differ. The exact ordered points, weights, sufficient statistics,
+residuals, scene hash, and joint-order hash are frozen in
+`manifests/evaluator.yaml`.
 
-### AMASS actor-shape probe without an AMASS dataset run
+The former frame-0 `head→mean(toes)` result is retained only as a diagnostic:
+`0.7833775086249071` with the canonical Holosoma `mid360` head site. The earlier
+`0.7420370439847394` value used a synthetic torso-offset head point while the
+controlled solver itself used the non-canonical GMR mocap scene. It is a legacy
+result, not a formal common-policy arm. Neither diagnostic is permitted in
+`TRANSPLANT_POLICIES`.
 
-Using the licensed neutral SMPL-X model, construct the same static pose and
-root path for at least three predeclared neutral beta vectors (short, zero,
-tall). Run only each official target constructor and record:
+Local/body scale, root-displacement scale, and the rigid frame-0 root anchor
+are separate registered parameters. The first two deliberately start with the
+same numerical LS value; the ±5% intervention perturbs them independently.
+Stage 2 recomputes the same estimator per source actor and continues to report
+head/toe span as a diagnostic rather than silently changing the estimator.
+
+### AMASS actor-shape policy formula probe without an AMASS dataset run
+
+Using the licensed neutral SMPL-X model, reconstruct the published formulas on
+the same static pose and root path for three predeclared neutral beta vectors
+(short, zero, tall), with every formula bound to hashes of its official source,
+and record:
 
 - mesh/landmark height under that method's definition;
 - root and local target gains;
@@ -482,8 +503,11 @@ tall). Run only each official target constructor and record:
 - contact-label changes; and
 - target hashes.
 
-This is a deterministic preprocessing probe, not an AMASS motion benchmark. It
-tests actor-shape invariance without authorizing an AMASS dataset sweep.
+This is formula-reconstruction evidence, not an observed native constructor,
+pre-solver response, or AMASS motion benchmark. It may explain differences in
+AMASS actor-shape policy, but it is forbidden as accuracy or ranking evidence.
+Exact LAFAN runtime targets are established separately by the schema-2 native
+pre-solver capture contract.
 
 ### Metrics and plots
 
@@ -574,7 +598,7 @@ It may return `GO` or `GO WITH CHANGES` only when all of the following are true:
 - native official and controlled ablation results are visually and
   terminologically separated;
 - all five within-method scale variants complete for required public methods;
-- the controlled policy transplant and actor-shape probe complete;
+- the controlled policy transplant and actor-shape formula probe complete;
 - scale variants differ only in registered scale fields and contact-mode fields;
 - sensitivity metrics, raw results, plots, and interactive views are complete;
 - the validator returns `NO-GO` when any mandatory item above is missing; and
@@ -590,8 +614,9 @@ No answer is required before implementation of the native audit and ±5% Pilot
 response. Before freezing the controlled common policy, the user's follow-up
 should resolve whether:
 
-1. the least-squares shared-landmark scale above is accepted as primary, with
-   head-to-toe retained only as a diagnostic; and
+1. whether a future, separately preregistered actor-rest-skeleton calibration
+   should supplement (not retroactively replace) the Stage 1 frame-0 semantic
+   landmark estimator; and
 2. the optional ±10% extension is scientifically useful after the ±5% response
    is inspected.
 

@@ -41,14 +41,18 @@ G1_JOINT_NAMES = (
 
 RUN_STATUSES = ("pending", "running", "succeeded", "incomplete", "failed", "na")
 
-# Public outputs remain at their immutable v1 paths.  Controlled baselines were
-# rerun after the non-result-driven evaluator-v2 scale/root-anchor/temporal
-# correction.  Earlier v2 artifacts remain immutable under runs/.
+# Protocol-v6 controlled outputs correct the common-scale estimator and use the
+# same canonical Holosoma scene as evaluation.  Public-method revisions v3/v2
+# bind the corrected in-memory timing boundary and runtime pre-solver witnesses;
+# older qpos may be numerically identical but are not admissible evidence.
 STAGE1_RUN_DIRECTORIES = {
-    "sparse-neutral": "sparse-neutral-v3",
-    "sparse-a": "sparse-a-v3",
-    "sparse-b": "sparse-b-v3",
-    "dense": "dense-v3",
-    "gmr": "gmr",
-    "omniretarget": "omniretarget",
+    "sparse-neutral": "sparse-neutral-v6",
+    "sparse-a": "sparse-a-v6",
+    "sparse-b": "sparse-b-v6",
+    "dense": "dense-v6",
+    "gmr": "gmr-v3",
+    "omniretarget": "omniretarget-v3",
+    "protomotions-v2.3": "protomotions-v2.3-v3",
+    "protomotions-v3": "protomotions-v3-v2",
+    "unitree-reference": "unitree-attributed-reference",
 }

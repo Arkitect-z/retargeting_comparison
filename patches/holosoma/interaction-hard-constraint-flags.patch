@@ -1,15 +1,23 @@
 diff --git a/src/holosoma_retargeting/holosoma_retargeting/src/interaction_mesh_retargeter.py b/src/holosoma_retargeting/holosoma_retargeting/src/interaction_mesh_retargeter.py
-index a5ed66e..4d0c89d 100644
+index a5ed66e..1d091ed 100644
 --- a/src/holosoma_retargeting/holosoma_retargeting/src/interaction_mesh_retargeter.py
 +++ b/src/holosoma_retargeting/holosoma_retargeting/src/interaction_mesh_retargeter.py
-@@ -675,8 +675,9 @@ class InteractionMeshRetargeter:
-         # Non-penetration constraints
+@@ -623,0 +624 @@ class InteractionMeshRetargeter:
++        constraint_component_counts = {}
+@@ -626,0 +628 @@ class InteractionMeshRetargeter:
++        constraint_component_counts["laplacian_equality"] = len(constraints)
+@@ -628,0 +631 @@ class InteractionMeshRetargeter:
++        component_start = len(constraints)
+@@ -673,0 +677 @@ class InteractionMeshRetargeter:
++        constraint_component_counts["foot_sticking_and_lock"] = len(constraints) - component_start
+@@ -676,6 +680,9 @@ class InteractionMeshRetargeter:
 -        Js, phis = self._update_jacobians_and_phis_from_q(q)
 -        for key, phi in phis.items():
 -            Ja_n_full = Js[key]
 -            Ja_n = Ja_n_full[self.q_a_indices]
 -            rhs = -phi - self.penetration_tolerance
 -            constraints += [Ja_n @ dqa >= rhs]
++        component_start = len(constraints)
 +        if self.activate_obj_non_penetration:
 +            Js, phis = self._update_jacobians_and_phis_from_q(q)
 +            for key, phi in phis.items():
@@ -17,4 +25,30 @@ index a5ed66e..4d0c89d 100644
 +                Ja_n = Ja_n_full[self.q_a_indices]
 +                rhs = -phi - self.penetration_tolerance
 +                constraints += [Ja_n @ dqa >= rhs]
- 
++        constraint_component_counts["object_non_penetration"] = len(constraints) - component_start
+@@ -683,0 +691 @@ class InteractionMeshRetargeter:
++        component_start = len(constraints)
+@@ -690,0 +699 @@ class InteractionMeshRetargeter:
++        constraint_component_counts["self_collision"] = len(constraints) - component_start
+@@ -692,0 +702 @@ class InteractionMeshRetargeter:
++        component_start = len(constraints)
+@@ -697,0 +708 @@ class InteractionMeshRetargeter:
++        constraint_component_counts["joint_limits"] = len(constraints) - component_start
+@@ -699,0 +711 @@ class InteractionMeshRetargeter:
++        component_start = len(constraints)
+@@ -700,0 +713,15 @@ class InteractionMeshRetargeter:
++        constraint_component_counts["step_size"] = len(constraints) - component_start
++        if not hasattr(self, "_rtcmp_constraint_audit"):
++            self._rtcmp_constraint_audit = []
++        self._rtcmp_constraint_audit.append(
++            {
++                "frame_idx": int(frame_idx),
++                "activate_foot_sticking": bool(self.activate_foot_sticking),
++                "apply_foot_sticking": bool(apply_foot_sticking),
++                "activate_obj_non_penetration": bool(self.activate_obj_non_penetration),
++                "activate_joint_limits": bool(self.activate_joint_limits),
++                "component_counts": constraint_component_counts,
++                "total_constraints": len(constraints),
++                "constraint_types": [type(constraint).__name__ for constraint in constraints],
++            }
++        )

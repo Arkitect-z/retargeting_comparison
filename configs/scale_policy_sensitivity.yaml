@@ -1,5 +1,5 @@
-schema_version: 1
-experiment_id: stage1_scale_policy_sensitivity_v1
+schema_version: 2
+experiment_id: stage1_scale_policy_sensitivity_v2_shared_landmark_ls
 status: planned_required
 full_lafan_authorized: false
 amass_motion_runs_authorized: false
@@ -35,10 +35,26 @@ pre_solver_target_contract:
     - constraint_graph_sha256
 
 common_policy:
-  definition: root_relative_weighted_least_squares_similarity_over_shared_semantic_landmarks
-  head_to_toe_span_role: diagnostic_only
-  root_path_scale_independent: true
-  root_anchor_independent: true
+  definition: frame0_root_heading_aligned_shared_semantic_landmark_weighted_scalar_least_squares
+  formula: argmin_s sum_k w_k ||s(h_k-h_root) - (r_k-r_root)||^2
+  estimator_role: formal_common_policy
+  protocol_correction: 2026-07-22-prompt-section-6.7-conformance
+  source_frame: 0
+  source_root_frame: Hips origin, geometry heading removed, canonical +X forward
+  robot_root_frame: neutral canonical Holosoma G1 pelvis, +X forward
+  weights: registered equal weight per landmark
+  source_landmarks: [Head, LeftArm, RightArm, LeftUpLeg, RightUpLeg, LeftLeg, RightLeg, LeftFoot, RightFoot, LeftToe, RightToe]
+  robot_landmarks: [head, left_shoulder, right_shoulder, left_hip, right_hip, left_knee, right_knee, left_ankle, right_ankle, left_toe, right_toe]
+  excluded_non_homologous_frames:
+    torso: LAFAN Spine2 and G1 torso-link origins are not homologous
+    distal_arms: source frame-0 and neutral-G1 arm poses differ
+  root_displacement_scale_parameter: separately_frozen_from_ls_initial_value
+  local_body_scale_parameter: shared_semantic_landmark_ls_value
+  root_anchor_parameter: neutral_g1_pelvis_at_source_frame0
+  root_local_and_anchor_frozen_separately: true
+  head_to_toe:
+    definition: neutral_g1_head_to_mean_toe_over_source_frame0_head_to_mean_toe
+    role: diagnostic_only_not_a_transplant_policy
   registration_must_precede_formal_runs: true
 
 within_method_variants:
@@ -76,13 +92,20 @@ controlled_policy_transplant:
     - root_anchor
     - contact_labels
   policies:
-    - common_registered_similarity
+    - common_shared_semantic_landmark_ls
     - holosoma_lafan_uniform
     - gmr_region_wise
     - protomotions_v2_3_world_axis
     - protomotions_v3_lower_upper_axis
   label: controlled_policy_ablation
   official_method_label_forbidden: true
+  protomotions_v3_dense_targets: formula-inspired extrapolation for Dense-only head/torso targets absent from the public v3 target set
+  canonical_robot_contract:
+    scene: external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml
+    qpos_width: 36
+    actuated_joint_count: 29
+    joint_order: canonical_g1_29
+    semantic_fk: CanonicalRobotModel.semantic_positions/v1
 
 contact_protocol:
   pure_scale_arm: fixed_canonical_labels
@@ -91,9 +114,14 @@ contact_protocol:
     - constraint_edge_flip_rate
   recomputed_contact_run_required_when_conclusion_changes: true
 
-actor_shape_probe:
+actor_shape_policy_formula_probe:
   body_model: neutral_smplx
   consumes_amass_motion: false
+  constructor_evidence_grade: formula_reconstruction_bound_to_official_source_hash
+  runtime_constructor_observed: false
+  not_used_as_accuracy_or_ranking_evidence: true
+  interpretation_scope: AMASS shape-policy differences only
+  exact_lafan_runtime_targets_evidenced_separately: manifests/native_pre_solver_targets.csv
   beta_profiles:
     - short
     - zero

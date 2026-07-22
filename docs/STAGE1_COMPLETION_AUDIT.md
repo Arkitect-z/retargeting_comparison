@@ -32,7 +32,7 @@ Full-LAFAN or AMASS dataset run was started.
 | Hashed pre-solver targets for every public method | schema designed, packages not captured | Missing |
 | Controlled scale-policy transplant | registered in `configs/scale_policy_sensitivity.yaml` | Missing results |
 | Root/local ±5% within-method response | five variants registered | Missing results |
-| Neutral-SMPL-X actor-shape target probe | short/zero/tall design registered | Missing results |
+| Neutral-SMPL-X actor-shape policy formula probe | short/zero/tall, official-source-hash-bound reconstruction; not runtime-constructor or ranking evidence | Generated; exact LAFAN targets require separate schema-2 native capture |
 | Fixed-contact/constraint-flip evidence | protocol registered | Missing results |
 | Revised interactive visualization/report | must include v2/v3 and active scale policy | Missing |
 | Revised Stage 1 validator | must fail on every missing mandatory item | Pending implementation |

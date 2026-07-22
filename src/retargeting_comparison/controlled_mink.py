@@ -13,6 +13,7 @@ import numpy as np
 
 from .calibration import human_heading_yaw, load_evaluator_protocol
 from .io_utils import load_yaml, sha256_file
+from .robot_model import CanonicalRobotModel, SEMANTIC_FRAMES
 from .schemas import CanonicalG1, CanonicalHuman
 
 
@@ -49,6 +50,8 @@ class ControlledMinkRetargeter:
         variant: str,
         seed_name: str = "neutral",
         config_path: str | Path = "configs/controlled_mink.yaml",
+        scale_policy: dict[str, Any] | None = None,
+        method_label: str | None = None,
     ):
         initialization_start = time.perf_counter()
         if variant not in {"sparse", "dense"}:
@@ -60,28 +63,88 @@ class ControlledMinkRetargeter:
         self.evaluator = load_evaluator_protocol(self.evaluator_path)
         self.variant = variant
         self.seed_name = seed_name
-        self.model = mujoco.MjModel.from_xml_path(
-            str(self.repo_root / self.config["robot_xml"])
-        )
+        self.scale_policy = copy.deepcopy(scale_policy)
+        self.method_label = method_label
+        robot_xml = (self.repo_root / self.config["robot_xml"]).resolve()
+        self.robot_xml = robot_xml
+        evaluator_xml = Path(str(self.evaluator["robot_xml"]))
+        if not evaluator_xml.is_absolute():
+            evaluator_xml = (self.repo_root / evaluator_xml).resolve()
+        if robot_xml != evaluator_xml:
+            raise ValueError(
+                "Controlled solver and evaluator must use the same canonical robot scene"
+            )
+        self.robot = CanonicalRobotModel(robot_xml)
+        if self.robot.sha256 != str(self.evaluator["robot_xml_sha256"]):
+            raise ValueError("Controlled canonical robot hash differs from evaluator")
+        if self.robot.joint_order_sha256 != str(
+            self.evaluator["robot_joint_order_sha256"]
+        ):
+            raise ValueError("Controlled canonical robot joint order differs from evaluator")
+        self.model = self.robot.model
         self.configuration = mink.Configuration(
             self.model, q=seed_qpos(self.model, self.config, seed_name)
         )
         self.tasks: list[Any] = []
         self.frame_tasks: list[tuple[dict[str, Any], Any]] = []
         common = self.config["common"]
-        configured_scale = float(common["position_scale_root_torso_legs"])
-        evaluator_scale = float(self.evaluator["scale"]["common_static_scale"])
-        if not np.isclose(configured_scale, evaluator_scale, atol=1e-12, rtol=0.0):
-            raise ValueError("Controlled scale must equal the frozen evaluator scale")
+        self.root_displacement_scale = float(common["root_displacement_scale"])
+        self.local_body_scale = float(common["local_body_scale"])
+        evaluator_root_scale = float(
+            self.evaluator["scale"]["common_root_displacement_scale"]
+        )
+        evaluator_local_scale = float(
+            self.evaluator["scale"]["common_local_body_scale"]
+        )
+        if not np.isclose(
+            self.root_displacement_scale,
+            evaluator_root_scale,
+            atol=1e-12,
+            rtol=0.0,
+        ):
+            raise ValueError(
+                "Controlled root-displacement scale must equal the frozen evaluator value"
+            )
+        if not np.isclose(
+            self.local_body_scale,
+            evaluator_local_scale,
+            atol=1e-12,
+            rtol=0.0,
+        ):
+            raise ValueError(
+                "Controlled local/body scale must equal the frozen evaluator value"
+            )
+        for compatibility_key in (
+            "position_scale_root_torso_legs",
+            "position_scale_arms",
+        ):
+            if not np.isclose(
+                float(common[compatibility_key]),
+                self.local_body_scale,
+                atol=1e-12,
+                rtol=0.0,
+            ):
+                raise ValueError(
+                    f"{compatibility_key} must be a local/body scale alias"
+                )
         self.root_alignment_translation = np.asarray(
             self.evaluator["scale"]["common_root_alignment_translation_m"],
             dtype=np.float64,
         )
         for spec in self.config["target_sets"][variant]:
+            expected_type, expected_name = SEMANTIC_FRAMES[spec["semantic"]]
+            if (
+                spec["robot_frame_type"] != expected_type
+                or spec["robot_frame"] != expected_name
+            ):
+                raise ValueError(
+                    "Controlled target frame differs from canonical semantic FK: "
+                    f"{spec['semantic']}"
+                )
             root = spec["semantic"] == "root"
             task = mink.FrameTask(
-                frame_name=spec["robot_body"],
-                frame_type="body",
+                frame_name=spec["robot_frame"],
+                frame_type=spec["robot_frame_type"],
                 position_cost=float(spec["position_cost"]),
                 orientation_cost=(
                     np.asarray([0.0, 0.0, float(spec["yaw_cost"])])
@@ -97,7 +160,13 @@ class ControlledMinkRetargeter:
             cost=float(common["posture_cost"]),
             lm_damping=float(common["lm_damping"]),
         )
-        self.posture.set_target_from_configuration(self.configuration)
+        # The A/B intervention is initial configuration only.  All seeds share
+        # the exact same neutral posture-prior centre; otherwise the diagnostic
+        # would mix basin sensitivity with a changed objective.
+        self.neutral_posture_configuration = mink.Configuration(
+            self.model, q=self.model.qpos0.copy()
+        )
+        self.posture.set_target_from_configuration(self.neutral_posture_configuration)
         self.tasks.append(self.posture)
         self.temporal = mink.PostureTask(
             self.model,
@@ -109,20 +178,55 @@ class ControlledMinkRetargeter:
         self.limits = [mink.ConfigurationLimit(self.model)]
         self.initialization_time_s = time.perf_counter() - initialization_start
 
+    def reset(self) -> None:
+        """Restore the frozen seed before an independent trajectory solve.
+
+        A formal warm process reuses the parsed MuJoCo model, Mink tasks, and
+        limits, but each repetition must start from the same initial condition.
+        Resetting only mutable solver state keeps initialization outside the
+        steady-state boundary without turning sequential warm start into an
+        accidental cross-repetition warm start.
+        """
+
+        self.configuration.update(
+            seed_qpos(self.model, self.config, self.seed_name).copy()
+        )
+        self.posture.set_target_from_configuration(
+            self.neutral_posture_configuration
+        )
+        self.temporal.set_target_from_configuration(self.configuration)
+
     def _target_position(
         self, human: CanonicalHuman, frame: int, joint_index: int, scale_group: str
     ) -> np.ndarray:
-        common = self.config["common"]
         root = human.world_positions[frame, 0]
-        scale = float(common[f"position_scale_{scale_group}"])
-        scaled_root = (
-            root * float(common["position_scale_root_torso_legs"])
+        if self.scale_policy is not None:
+            root_axis = np.asarray(self.scale_policy["root_axis"], dtype=np.float64)
+            local_axes = self.scale_policy["local_axes"]
+            local_axis = np.asarray(local_axes[scale_group], dtype=np.float64)
+            if root_axis.shape != (3,) or local_axis.shape != (3,):
+                raise ValueError("Scale-policy axes must contain exactly three values")
+            source_root0 = human.world_positions[0, 0]
+            robot_anchor = (
+                source_root0 * self.root_displacement_scale
+                + self.root_alignment_translation
+            )
+            scaled_root = robot_anchor + (root - source_root0) * root_axis
+            return scaled_root + (human.world_positions[frame, joint_index] - root) * local_axis
+        source_root0 = human.world_positions[0, 0]
+        robot_anchor = (
+            source_root0 * self.root_displacement_scale
             + self.root_alignment_translation
         )
-        return scaled_root + (human.world_positions[frame, joint_index] - root) * scale
+        scaled_root = robot_anchor + (
+            root - source_root0
+        ) * self.root_displacement_scale
+        return scaled_root + (
+            human.world_positions[frame, joint_index] - root
+        ) * self.local_body_scale
 
     def _set_targets(self, human: CanonicalHuman, frame: int, indices: dict[str, int]) -> None:
-        # The evaluator-v2 heading is derived from source geometry, avoiding a
+        # The evaluator-v3 heading is derived from source geometry, avoiding a
         # BVH-root/G1-pelvis axis convention hidden inside an upstream method.
         yaw = float(human_heading_yaw(human, np.asarray([frame]))[0])
         yaw_rotation = mink.SO3.from_z_radians(yaw)
@@ -136,6 +240,7 @@ class ControlledMinkRetargeter:
 
     def run(self, human: CanonicalHuman, max_frames: int | None = None) -> CanonicalG1:
         human.validate()
+        self.reset()
         indices = {name: index for index, name in enumerate(human.joint_names.astype(str))}
         required = {spec["human_joint"] for spec, _ in self.frame_tasks}
         missing = sorted(required - set(indices))
@@ -209,7 +314,7 @@ class ControlledMinkRetargeter:
             valid=np.ones(len(qpos), dtype=bool),
             per_frame_solve_time_s=np.asarray(solve_times[: len(qpos)]),
             metadata={
-                "method": variant_label(self.variant, self.seed_name),
+                "method": self.method_label or variant_label(self.variant, self.seed_name),
                 "method_family": "controlled_mink",
                 "variant": self.variant,
                 "seed": self.seed_name,
@@ -220,15 +325,34 @@ class ControlledMinkRetargeter:
                 "config_sha256": sha256_file(self.config_path),
                 "evaluator_sha256": sha256_file(self.evaluator_path),
                 "sequential_warm_start": True,
+                "initialization_intervention_only": True,
+                "posture_prior_target": "neutral_model_qpos0_for_all_seeds",
                 "temporal_smoothness_cost": float(common["temporal_smoothness_cost"]),
+                "root_displacement_scale": self.root_displacement_scale,
+                "local_body_scale": self.local_body_scale,
                 "position_scale_root_torso_legs": float(
                     common["position_scale_root_torso_legs"]
                 ),
                 "position_scale_arms": float(common["position_scale_arms"]),
+                "scale_policy": self.scale_policy,
                 "root_alignment_translation_m": self.root_alignment_translation.tolist(),
+                "root_anchor_policy": self.evaluator["scale"]["root_anchor_policy"],
+                "root_local_and_anchor_frozen_separately": True,
+                "canonical_robot_xml": str(
+                    self.robot_xml.relative_to(self.repo_root)
+                ),
+                "canonical_robot_xml_sha256": self.robot.sha256,
+                "canonical_joint_order": list(self.robot.joint_names),
+                "canonical_joint_order_sha256": self.robot.joint_order_sha256,
+                "canonical_fk_contract": "CanonicalRobotModel.semantic_positions/v1",
                 "orientation_targets": ["root_yaw"],
                 "initialization_time_s": self.initialization_time_s,
                 "steady_end_to_end_total_s": float(sum(end_to_end_times)),
+                "native_core_total_s": float(sum(end_to_end_times)),
+                "native_core_timing_boundary": (
+                    "per-frame target construction start -> finite canonical qpos in memory; "
+                    "sum excludes model/config initialization and serialization"
+                ),
             },
         )
 

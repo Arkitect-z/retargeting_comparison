@@ -1,0 +1,396 @@
+schema_version: 2
+stage: 2
+experiment_id: lafan1_stage2_v1
+
+# The user authorized Stage 2 on 2026-07-22.  This authorization becomes
+# actionable only after the Stage-1 validator reports GO and the immutable
+# preflight plan fits both hard budgets.
+authorization:
+  explicitly_authorized: true
+  authorized_by: user
+  authorized_request_date: '2026-07-22'
+  scope: run_after_stage1_go_under_frozen_budget
+  full_lafan_authorized: true
+
+stage1_gate:
+  validation_manifest: manifests/stage1_validation.json
+  accepted_decisions: [GO]
+  require_all_checks: true
+  require_bound_validation: true
+  require_formal_outputs: true
+  require_strict_source_identity: true
+  expected_frames: 600
+  canonical_source_manifest: manifests/pilot_sequence.yaml
+  formal_timing_campaign:
+    required: true
+    config: configs/stage1_timing_campaign.yaml
+    state_manifest: manifests/stage1_timing_campaign.json
+  # These are the six scientific operating points accepted by the Stage-1
+  # publication builder.  Stage 2 is not allowed to silently drop a missing
+  # integration at readiness resolution time; all six must pass this gate
+  # before the later, pre-registered *budget* simplification is considered.
+  formal_outputs:
+    sparse-neutral:
+      path: runs/dance1_subject1_f000000_000600/sparse-neutral-v6/canonical_g1.npz
+      revision: sparse-neutral-v6
+      run_manifest: runs/manifests/dance1_subject1_f000000_000600__sparse-neutral-v6.json
+      run_id: dance1_subject1_f000000_000600__sparse-neutral-v6
+      registered_directory: runs/dance1_subject1_f000000_000600/sparse-neutral-v6
+      metadata_methods: [sparse-neutral]
+    dense:
+      path: runs/dance1_subject1_f000000_000600/dense-v6/canonical_g1.npz
+      revision: dense-v6
+      run_manifest: runs/manifests/dance1_subject1_f000000_000600__dense-v6.json
+      run_id: dance1_subject1_f000000_000600__dense-v6
+      registered_directory: runs/dance1_subject1_f000000_000600/dense-v6
+      metadata_methods: [dense]
+    gmr:
+      path: runs/dance1_subject1_f000000_000600/gmr-v3/canonical_g1.npz
+      revision: gmr-v3
+      run_manifest: runs/manifests/dance1_subject1_f000000_000600__gmr-v3.json
+      run_id: dance1_subject1_f000000_000600__gmr-v3
+      registered_directory: runs/dance1_subject1_f000000_000600/gmr-v3
+      metadata_methods: [gmr]
+    omniretarget:
+      path: runs/dance1_subject1_f000000_000600/omniretarget-v3/canonical_g1.npz
+      revision: omniretarget-v3
+      run_manifest: runs/manifests/dance1_subject1_f000000_000600__omniretarget-v3.json
+      run_id: dance1_subject1_f000000_000600__omniretarget-v3
+      registered_directory: runs/dance1_subject1_f000000_000600/omniretarget-v3
+      metadata_methods: [omniretarget]
+    protomotions-v2.3:
+      path: runs/dance1_subject1_f000000_000600/protomotions-v2.3-v3/canonical_g1.npz
+      revision: protomotions-v2.3-v3
+      run_manifest: runs/manifests/dance1_subject1_f000000_000600__protomotions-v2.3-v3.json
+      run_id: dance1_subject1_f000000_000600__protomotions-v2.3-v3
+      registered_directory: runs/dance1_subject1_f000000_000600/protomotions-v2.3-v3
+      metadata_methods: [protomotions_v2_3_mink, protomotions-v2.3]
+    protomotions-v3:
+      path: runs/dance1_subject1_f000000_000600/protomotions-v3-v2/canonical_g1.npz
+      revision: protomotions-v3-v2
+      run_manifest: manifests/runs/dance1_subject1_f000000_000600__protomotions-v3.json
+      run_id: dance1_subject1_f000000_000600__protomotions-v3
+      registered_directory: runs/dance1_subject1_f000000_000600/protomotions-v3-v2
+      metadata_methods: [protomotions_v3, protomotions-v3]
+
+budget:
+  wall_time_hours: 48.0
+  retained_storage_gb: 200.0
+  safety_factor: 1.5
+  decimal_gb: true
+  stop_before_limit_fraction: 0.98
+
+# These costs are part of the wall/storage projection, rather than being
+# assumed to fit for free around method execution.  The failure allowance is
+# applied to preparation + production + evaluation before the global 1.5x
+# safety factor.
+budget_allowances:
+  source_preparation_rtf: 0.25
+  source_preparation_startup_s_per_sequence: 1.0
+  # Current implementation prepares and evaluates sequentially. Do not claim
+  # unrealized parallel speedup in the budget. The evaluator allowance also
+  # covers direct method↔reference FK agreement.
+  source_preparation_workers: 1
+  evaluator_rtf_per_method: 0.70
+  evaluator_startup_s_per_job: 0.5
+  evaluator_workers: 1
+  failure_runtime_fraction: 0.10
+  failure_storage_fraction: 0.05
+  analysis_retained_bytes_per_job: 262144
+  analysis_fixed_retained_bytes: 104857600
+
+# Deterministic simplification order.  A single trajectory-wide optimizer must
+# not force every feasible method onto a post-hoc small subset.  Before any
+# source-only reduced-LAFAN selection, remove the listed high-cost method only
+# when the all-method Full-LAFAN projection exceeds a hard budget, and stop as
+# soon as the full 77-sequence design fits.  The removed method remains a
+# required and fully reported Stage-1 operating point.
+budget_simplification:
+  policy: exclude_registered_high_cost_methods_before_reducing_dataset
+  method_exclusion_order:
+    - protomotions-v3
+  require_full_projection_after_each_exclusion: true
+  stage1_evidence_retained: true
+  result_metrics_used_for_decision: false
+  # The formal v3 trajectory-wide optimizer exceeded the registered Stage-2
+  # production cost envelope. Its complete Pilot evidence remains in Stage 1.
+  exclude_registered_method_for_production: true
+
+production_design:
+  required: true
+  selected_methods:
+    - sparse-neutral
+    - dense
+    - gmr
+    - omniretarget
+    - protomotions-v2.3
+    - unitree-reference
+  required_budget_exclusions: [protomotions-v3]
+  result_quality_used_for_selection: false
+
+preflight_cost_probe:
+  required: true
+  manifest: manifests/stage2_cost_probe.json
+  repetitions: 3
+  statistic: median
+  conservative_multiplier: 1.5
+  measurement_environment: capture
+  contention_probe:
+    method: omniretarget
+    environment: hsretargeting
+    levels: [1, 2, 6]
+    repetitions_per_level: 1
+    source_frames: 20
+    cpu_assignment: distinct_allowed_cpus
+    conservative_slowdown_multiplier: 1.10
+    apply_to_all_methods_with_workers_gt_one: true
+
+dataset:
+  name: LAFAN1
+  root: data/lafan1
+  glob: '**/*.bvh'
+  expected_files: 77
+  expected_frames: 496672
+  source_position_scale: 0.01
+  selection_seed: stage2-lafan1-v1-source-only
+  reduced_min_sequences: 8
+  # The reduced order is a source-only SHA-256 permutation.  One compatible
+  # reference-corpus sequence is placed first when an intersection exists.
+  reduced_selection: deterministic_hash_prefix_with_reference_anchor
+  timeline_policy:
+    frames: exact_source_inventory_no_interpolation
+    fps: exact_bvh_frame_time
+    source_frame_idx: contiguous_zero_based
+    valid: every_frame_true
+
+reference_corpus:
+  label: Unitree-attributed reference corpus
+  role: external_reference_not_verified_ground_truth
+  root: data/external/unitree_lafan1_reference/ce1572906efe6157840e8474d5a0d7aa87481e74/g1
+  glob: '*.csv'
+  revision: ce1572906efe6157840e8474d5a0d7aa87481e74
+  match_rule: normalized_bvh_basename_equals_csv_basename
+  include_only_filename_intersection: true
+  exclude_from_runtime_ranking: true
+  expected_files: 40
+  expected_intersection_files: 40
+  expected_columns: 36
+  expected_actor_ids: [subject1, subject2, subject3, subject4, subject5]
+  require_finite_numeric_values: true
+  require_exact_source_frame_count: true
+  native_fps_relative_tolerance: 2.0e-5
+  contract:
+    required: true
+    manifest: manifests/unitree_reference.json
+    config: configs/unitree_reference.yaml
+    required_pinned_resources: [readme, license, metadata, visualizer, g1_urdf]
+    fk_audit:
+      random_sample_count: 10
+      seed: 1947
+      position_tolerance_m: 1.0e-5
+      rotation_tolerance_rad: 1.0e-5
+
+canonicalization:
+  contract: canonical_human_v1
+  quaternion_order: wxyz
+  coordinate_system: right_handed_z_up_metres
+  output_root: runs/stage2
+  common_scale:
+    stratum: controlled_common_per_sequence_scale
+    definition: frame0_root_heading_aligned_shared_semantic_landmark_weighted_scalar_least_squares
+    formula: argmin_s sum_k w_k ||s(h_k-h_root) - (r_k-r_root)||^2
+    local_body_scale: shared_semantic_landmark_ls_value
+    root_displacement_scale: separately_frozen_from_ls_initial_value
+    root_anchor: neutral_g1_pelvis_at_source_frame0
+    root_local_and_anchor_frozen_separately: true
+    head_to_toe_role: diagnostic_only_not_common_policy
+    method_independent: true
+    recompute_for_each_sequence: true
+    posthoc_qpos_scaling_forbidden: true
+
+scheduling:
+  physical_cores: 16
+  method_phases_are_sequential: true
+  within_phase_policy: deterministic_longest_processing_time_first
+  thread_limit_per_process: 1
+  production_passes_per_job: 1
+  retry_automatically: false
+  phase_order:
+    - sparse-neutral
+    - dense
+    - gmr
+    - omniretarget
+    - protomotions-v2.3
+    - protomotions-v3
+    - unitree-reference
+
+# Every retargeter is resolved through its accepted Stage-1 RunManifest; the
+# readiness_path below is test-only compatibility and is never authoritative in
+# production. RTF/startup comes from the hash-bound 1/1/3 timing campaign.
+methods:
+  sparse-neutral:
+    stratum: controlled_common_per_sequence_scale
+    public_pipeline: false
+    environment: capture
+    workers: 6
+    readiness: stage1_output
+    readiness_path: runs/dance1_subject1_f000000_000600/sparse-neutral-v6/canonical_g1.npz
+    readiness_manifest: runs/manifests/dance1_subject1_f000000_000600__sparse-neutral-v6.json
+    rtf: null
+    startup_s_per_sequence: null
+    retained_bytes_per_frame: 3000
+    retained_bytes_per_sequence: 65536
+    estimate_source: bound_stage1_formal_timing_campaign
+    registered_revision: sparse-neutral-v6
+    policy_files: [configs/controlled_mink.yaml, manifests/evaluator.yaml]
+    scale_policy: controlled_common_per_sequence_ls_and_anchor
+  dense:
+    stratum: controlled_common_per_sequence_scale
+    public_pipeline: false
+    environment: capture
+    workers: 6
+    readiness: stage1_output
+    readiness_path: runs/dance1_subject1_f000000_000600/dense-v6/canonical_g1.npz
+    readiness_manifest: runs/manifests/dance1_subject1_f000000_000600__dense-v6.json
+    rtf: null
+    startup_s_per_sequence: null
+    retained_bytes_per_frame: 3000
+    retained_bytes_per_sequence: 65536
+    estimate_source: bound_stage1_formal_timing_campaign
+    registered_revision: dense-v6
+    policy_files: [configs/controlled_mink.yaml, manifests/evaluator.yaml]
+    scale_policy: controlled_common_per_sequence_ls_and_anchor
+  gmr:
+    stratum: native_public_pipeline
+    public_pipeline: true
+    environment: robot
+    workers: 6
+    readiness: stage1_output
+    readiness_path: runs/dance1_subject1_f000000_000600/gmr-v3/canonical_g1.npz
+    readiness_manifest: runs/manifests/dance1_subject1_f000000_000600__gmr-v3.json
+    rtf: null
+    startup_s_per_sequence: null
+    retained_bytes_per_frame: 3000
+    retained_bytes_per_sequence: 65536
+    estimate_source: bound_stage1_formal_timing_campaign
+    registered_revision: gmr-v3
+    policy_files: [external/GMR/general_motion_retargeting/ik_configs/bvh_lafan1_to_g1.json]
+    scale_policy: unchanged_native_public_pipeline
+  omniretarget:
+    stratum: native_public_pipeline
+    public_pipeline: true
+    environment: hsretargeting
+    # Six single-thread workers leave ten physical cores for the OS, I/O, and
+    # evaluator work and reduce the old 66.4-hour serial projection.
+    workers: 6
+    readiness: stage1_output
+    readiness_path: runs/dance1_subject1_f000000_000600/omniretarget-v3/canonical_g1.npz
+    readiness_manifest: runs/manifests/dance1_subject1_f000000_000600__omniretarget-v3.json
+    rtf: null
+    startup_s_per_sequence: null
+    retained_bytes_per_frame: 3000
+    retained_bytes_per_sequence: 65536
+    estimate_source: bound_stage1_formal_timing_campaign
+    registered_revision: omniretarget-v3
+    policy_files:
+      - external/holosoma/src/holosoma_retargeting/holosoma_retargeting/config_types/data_type.py
+      - external/holosoma/src/holosoma_retargeting/holosoma_retargeting/config_types/retargeting.py
+    scale_policy: unchanged_native_public_pipeline
+  protomotions-v2.3:
+    # Upstream v2.3 publishes the Mink retargeter and G1 task policy, but not a
+    # native LAFAN loader.  Our canonical-LAFAN adapter is therefore a named
+    # benchmark port, not an unchanged official LAFAN pipeline.
+    stratum: benchmark_public_retargeter_port
+    public_pipeline: true
+    environment: capture
+    workers: 6
+    readiness: stage1_output
+    readiness_path: runs/dance1_subject1_f000000_000600/protomotions-v2.3-v3/canonical_g1.npz
+    readiness_manifest: runs/manifests/dance1_subject1_f000000_000600__protomotions-v2.3-v3.json
+    rtf: null
+    startup_s_per_sequence: null
+    retained_bytes_per_frame: 3000
+    retained_bytes_per_sequence: 65536
+    estimate_source: bound_stage1_formal_timing_campaign
+    registered_revision: protomotions-v2.3-v3
+    policy_files: [configs/protomotions_v2.yaml]
+    scale_policy: unchanged_benchmark_port_policy
+  protomotions-v3:
+    # Upstream v3 exposes the generic modified-PyRoki retargeter and G1
+    # configuration, but this benchmark supplies the LAFAN keypoint adapter.
+    # It is therefore a benchmark port, not an official/native LAFAN path.
+    stratum: benchmark_public_retargeter_port
+    public_pipeline: true
+    environment: egoallo
+    workers: 1
+    readiness: stage1_output
+    readiness_path: runs/dance1_subject1_f000000_000600/protomotions-v3-v2/canonical_g1.npz
+    readiness_manifest: manifests/runs/dance1_subject1_f000000_000600__protomotions-v3.json
+    rtf: null
+    startup_s_per_sequence: null
+    retained_bytes_per_frame: 3000
+    retained_bytes_per_sequence: 65536
+    estimate_source: bound_stage1_formal_timing_campaign
+    registered_revision: protomotions-v3-v2
+    policy_files: [configs/protomotions_v3.yaml]
+    scale_policy: unchanged_benchmark_port_policy
+  unitree-reference:
+    stratum: external_reference
+    public_pipeline: false
+    environment: capture
+    workers: 6
+    readiness: reference_intersection
+    rtf: 0.02
+    startup_s_per_sequence: 0.1
+    retained_bytes_per_frame: 3000
+    retained_bytes_per_sequence: 65536
+    estimate_source: registered_conservative_csv_adapter_allowance
+    registered_revision: ce1572906efe6157840e8474d5a0d7aa87481e74
+    policy_files: [configs/unitree_reference.yaml, manifests/unitree_reference.json]
+    reference_policy: frame_index_only_not_exact_timestamp_or_source_identity
+
+storage_projection:
+  canonical_source_bytes_per_frame: 4500
+  canonical_source_bytes_per_sequence: 65536
+  fixed_manifest_and_summary_bytes: 104857600
+  retain_raw_inputs_in_incremental_budget: true
+  retain_canonical_outputs: true
+  retain_metrics: true
+  retain_provenance_logs: true
+  delete_rebuildable_native_intermediates_after_hash_capture: true
+
+execution:
+  # Planning and preview are safe by default.  Launch additionally requires
+  # launch=true and the exact plan SHA-256, preventing an accidental broad run.
+  default_launch: false
+  require_exact_plan_sha256_acknowledgement: true
+  minimum_completion_ratio: 1.0
+  preserve_failed_attempts: true
+  overwrite_successful_artifacts: false
+  timing_protocol: one_production_pass_using_stage1_timing_for_projection
+
+repository_gate:
+  require_clean_worktree: true
+  require_external_clean: true
+  external_worktrees:
+    gmr:
+      path: external/GMR
+      expected_commit: bb1bbe40774794fceb2a7c579a3464a28e68c844
+    omniretarget:
+      path: external/holosoma
+      expected_commit: 5f48635a3624656a5f46a07df26d43187e59f855
+      tracked_patch: patches/holosoma/interaction-hard-constraint-flags.patch
+    protomotions-v2.3:
+      path: external/ProtoMotions-v2.3
+      expected_commit: 4a905b998101333a2fb91f2de8e2cab4bd0db68e
+    protomotions-v3:
+      path: external/ProtoMotions
+      expected_commit: 49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c
+  required_assets:
+    - external/holosoma/src/holosoma/holosoma/data/robots/g1/scenes/scene_g1_29dof_wbt_plane.xml
+    - manifests/evaluator.yaml
+
+publication:
+  # This directory is intentionally outside ignored runs/ so the immutable
+  # plan snapshot, CSV/SVG evidence, reports, and validation can be committed.
+  tracked_output_root: stage2_results
