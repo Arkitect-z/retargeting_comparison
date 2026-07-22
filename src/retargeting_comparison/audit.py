@@ -270,6 +270,12 @@ The graph is an evidence map, not a performance ranking.
     for extension, kwargs in (("svg", {}), ("pdf", {}), ("png", {"dpi": 300})):
         figure.savefig(research / f"lineage_graph.{extension}", bbox_inches="tight", **kwargs)
     plt.close(figure)
+    lineage_svg = research / "lineage_graph.svg"
+    atomic_write_text(
+        lineage_svg,
+        "\n".join(line.rstrip() for line in lineage_svg.read_text().splitlines())
+        + "\n",
+    )
 
     claims = research / "claims.csv"
     claim_fields = [
