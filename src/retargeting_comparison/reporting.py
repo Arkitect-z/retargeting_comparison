@@ -254,6 +254,10 @@ def controlled_task_residuals(root: Path) -> pd.DataFrame:
     human = CanonicalHuman.load(root / sequence["canonical_path"])
     robot = CanonicalRobotModel(default_robot_scene(root))
     config = load_yaml(root / "configs" / "controlled_mink.yaml")
+    protocol = load_evaluator_protocol(root / "manifests" / "evaluator.yaml")
+    root_alignment = np.asarray(
+        protocol["scale"]["common_root_alignment_translation_m"], dtype=np.float64
+    )
     indices = {name: index for index, name in enumerate(human.joint_names.astype(str))}
     per_frame_rows: list[dict[str, Any]] = []
     summary_rows: list[dict[str, Any]] = []
@@ -265,8 +269,10 @@ def controlled_task_residuals(root: Path) -> pd.DataFrame:
         for spec in config["target_sets"][variant]:
             root_position = human.world_positions[:, 0]
             scale = float(config["common"][f"position_scale_{spec['scale_group']}"])
-            scaled_root = root_position * float(
-                config["common"]["position_scale_root_torso_legs"]
+            scaled_root = (
+                root_position
+                * float(config["common"]["position_scale_root_torso_legs"])
+                + root_alignment
             )
             target = scaled_root + (
                 human.world_positions[:, indices[spec["human_joint"]]] - root_position

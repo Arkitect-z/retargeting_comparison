@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
-from pathlib import Path
 
 from retargeting_comparison.controlled_mink import (
     ControlledMinkRetargeter,
@@ -10,6 +11,7 @@ from retargeting_comparison.controlled_mink import (
     seed_qpos,
 )
 from retargeting_comparison.io_utils import load_yaml
+from retargeting_comparison.schemas import CanonicalHuman
 
 
 pytestmark = pytest.mark.skipif(
@@ -51,3 +53,9 @@ def test_controlled_baseline_has_distinct_posture_and_temporal_tasks() -> None:
     retargeter = ControlledMinkRetargeter(".", "sparse")
     assert retargeter.posture is not retargeter.temporal
     assert retargeter.tasks[-2:] == [retargeter.posture, retargeter.temporal]
+    source = CanonicalHuman.load(
+        "source/canonical_human/dance1_subject1_f000000_000600.npz"
+    )
+    target = retargeter._target_position(source, 0, 0, "root_torso_legs")
+    neutral_root = retargeter.model.qpos0[:3]
+    assert np.allclose(target, neutral_root, atol=1e-12, rtol=0.0)

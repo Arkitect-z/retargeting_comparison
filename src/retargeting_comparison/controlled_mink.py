@@ -11,7 +11,7 @@ import mink
 import mujoco
 import numpy as np
 
-from .calibration import human_heading_yaw
+from .calibration import human_heading_yaw, load_evaluator_protocol
 from .io_utils import load_yaml, sha256_file
 from .schemas import CanonicalG1, CanonicalHuman
 
@@ -56,6 +56,8 @@ class ControlledMinkRetargeter:
         self.repo_root = Path(repo_root).resolve()
         self.config_path = self.repo_root / config_path
         self.config = load_yaml(self.config_path)
+        self.evaluator_path = self.repo_root / "manifests" / "evaluator.yaml"
+        self.evaluator = load_evaluator_protocol(self.evaluator_path)
         self.variant = variant
         self.seed_name = seed_name
         self.model = mujoco.MjModel.from_xml_path(
@@ -67,6 +69,14 @@ class ControlledMinkRetargeter:
         self.tasks: list[Any] = []
         self.frame_tasks: list[tuple[dict[str, Any], Any]] = []
         common = self.config["common"]
+        configured_scale = float(common["position_scale_root_torso_legs"])
+        evaluator_scale = float(self.evaluator["scale"]["common_static_scale"])
+        if not np.isclose(configured_scale, evaluator_scale, atol=1e-12, rtol=0.0):
+            raise ValueError("Controlled scale must equal the frozen evaluator scale")
+        self.root_alignment_translation = np.asarray(
+            self.evaluator["scale"]["common_root_alignment_translation_m"],
+            dtype=np.float64,
+        )
         for spec in self.config["target_sets"][variant]:
             root = spec["semantic"] == "root"
             task = mink.FrameTask(
@@ -105,7 +115,10 @@ class ControlledMinkRetargeter:
         common = self.config["common"]
         root = human.world_positions[frame, 0]
         scale = float(common[f"position_scale_{scale_group}"])
-        scaled_root = root * float(common["position_scale_root_torso_legs"])
+        scaled_root = (
+            root * float(common["position_scale_root_torso_legs"])
+            + self.root_alignment_translation
+        )
         return scaled_root + (human.world_positions[frame, joint_index] - root) * scale
 
     def _set_targets(self, human: CanonicalHuman, frame: int, indices: dict[str, int]) -> None:
@@ -205,12 +218,14 @@ class ControlledMinkRetargeter:
                 "canonical_source_sha256": human.source_sha256,
                 "config_path": str(self.config_path.relative_to(self.repo_root)),
                 "config_sha256": sha256_file(self.config_path),
+                "evaluator_sha256": sha256_file(self.evaluator_path),
                 "sequential_warm_start": True,
                 "temporal_smoothness_cost": float(common["temporal_smoothness_cost"]),
                 "position_scale_root_torso_legs": float(
                     common["position_scale_root_torso_legs"]
                 ),
                 "position_scale_arms": float(common["position_scale_arms"]),
+                "root_alignment_translation_m": self.root_alignment_translation.tolist(),
                 "orientation_targets": ["root_yaw"],
                 "initialization_time_s": self.initialization_time_s,
                 "steady_end_to_end_total_s": float(sum(end_to_end_times)),

@@ -99,6 +99,10 @@ def build_evaluator_protocol(
     """Build the frozen evaluator-v2 protocol for the selected Pilot."""
 
     common_scale, human_height, robot_height = common_landmark_scale(human, robot)
+    neutral = robot.semantic_positions(robot.model.qpos0.copy())
+    root_alignment = (
+        neutral["root"] - common_scale * human.world_positions[0, 0]
+    )
     return {
         "schema_version": EVALUATOR_SCHEMA_VERSION,
         "name": "stage1-pilot-evaluator-v2",
@@ -118,25 +122,29 @@ def build_evaluator_protocol(
             "source_landmark_height_m": human_height,
             "neutral_robot_landmark_height_m": robot_height,
             "common_static_scale": common_scale,
+            "common_root_alignment_translation_m": root_alignment.tolist(),
+            "root_alignment_definition": (
+                "neutral_g1_root_minus_scaled_source_frame0_root"
+            ),
             "source_landmarks": ["Head", "mean(LeftToe,RightToe)"],
             "robot_landmarks": ["head", "mean(left_toe,right_toe)"],
         },
         "native_root_scales": {
             "sparse-neutral": {
                 "value": common_scale,
-                "policy": "controlled-v2 common benchmark scale",
+                "policy": "controlled-v3 common benchmark scale and rigid root anchor",
             },
             "sparse-a": {
                 "value": common_scale,
-                "policy": "controlled-v2 common benchmark scale",
+                "policy": "controlled-v3 common benchmark scale and rigid root anchor",
             },
             "sparse-b": {
                 "value": common_scale,
-                "policy": "controlled-v2 common benchmark scale",
+                "policy": "controlled-v3 common benchmark scale and rigid root anchor",
             },
             "dense": {
                 "value": common_scale,
-                "policy": "controlled-v2 common benchmark scale",
+                "policy": "controlled-v3 common benchmark scale and rigid root anchor",
             },
             "gmr": {
                 "value": 0.9 * (1.75 / 1.8),
@@ -191,6 +199,11 @@ def load_evaluator_protocol(path: str | Path) -> dict[str, Any]:
     common = float(scale.get("common_static_scale", float("nan")))
     if not np.isfinite(common) or not 0.3 < common < 1.5:
         raise ValueError("Evaluator common scale is missing or implausible")
+    alignment = np.asarray(
+        scale.get("common_root_alignment_translation_m", []), dtype=np.float64
+    )
+    if alignment.shape != (3,) or not np.isfinite(alignment).all():
+        raise ValueError("Evaluator common root alignment must be a finite xyz vector")
     return value
 
 
