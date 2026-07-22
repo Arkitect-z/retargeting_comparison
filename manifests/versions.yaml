@@ -1,0 +1,5 @@
+captured_at_utc: '2026-07-22T11:30:38.289076+00:00'
+harness_commit: 0e7df72ec5fe6fa2abacf098cf4146743aaba804
+stage_config_sha256: 52ab2dff30aeea51a4181cc7ba5e56121f4f77786f0e47c0cfb53a500c9c6ae8
+python: 3.10.19
+full_lafan_authorized: false

@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
+from .audit import generate_audit
 from .constants import FULL_LAFAN_STOP_MESSAGE
+from .io_utils import load_yaml
+from .model_validation import validate_body_models
+from .source import canonicalize_source, crop_bvh, select_pilot
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rtcmp")
     parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("audit", help="freeze first-party research and repository evidence")
-    sub.add_parser("prepare-source", help="select and canonicalize the Pilot source")
-    sub.add_parser("validate-models", help="validate external SMPL and SMPL-X assets")
+    audit = sub.add_parser("audit", help="freeze first-party research and repository evidence")
+    audit.add_argument("--repo-root", default=".")
+    prepare = sub.add_parser("prepare-source", help="select and canonicalize the Pilot source")
+    prepare.add_argument("--lafan-root")
+    prepare.add_argument("--config", default="configs/stage1.yaml")
+    prepare.add_argument("--repo-root", default=".")
+    models = sub.add_parser("validate-models", help="validate external SMPL and SMPL-X assets")
+    models.add_argument("--body-models-root")
+    models.add_argument("--config", default="configs/stage1.yaml")
+    models.add_argument("--output", default="manifests/body_models.yaml")
     run_method = sub.add_parser("run-method", help="run one frozen retargeting method")
     run_method.add_argument("--method", required=True)
     run_method.add_argument("--sequence", required=True)
@@ -29,6 +41,37 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "audit":
+        generate_audit(args.repo_root)
+        return 0
+    if args.command == "validate-models":
+        config = load_yaml(args.config)
+        body_root = args.body_models_root or config["body_models_root"]
+        validate_body_models(body_root, args.output)
+        return 0
+    if args.command == "prepare-source":
+        root = Path(args.repo_root).resolve()
+        config = load_yaml(args.config)
+        lafan_root = Path(args.lafan_root or config["lafan_root"])
+        selected = select_pilot(
+            lafan_root,
+            root / "metrics" / "pilot_source_selection.csv",
+            float(config["source_position_scale"]),
+        )
+        cropped = root / "data" / "pilot" / f"{selected.sequence_id}.bvh"
+        crop_bvh(selected.source_file, cropped, selected.frame_start, selected.frame_end)
+        output = root / "source" / "canonical_human" / f"{selected.sequence_id}.npz"
+        canonicalize_source(
+            cropped,
+            output,
+            root / "manifests" / "pilot_sequence.yaml",
+            float(config["source_position_scale"]),
+            origin_path=selected.source_file,
+            origin_frame_start=selected.frame_start,
+            origin_frame_end=selected.frame_end,
+            repo_root=root,
+        )
+        return 0
     if args.command == "validate-stage1":
         print(FULL_LAFAN_STOP_MESSAGE)
         return 0
@@ -37,4 +80,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

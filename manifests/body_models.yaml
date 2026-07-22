@@ -1,0 +1,23 @@
+assets_committed_to_git: false
+body_models_root: ../body_models
+smpl:
+  path: ../body_models/smpl_chumpyfree/smpl/SMPL_NEUTRAL.pkl
+  format: chumpy-free pkl
+  size_bytes: 41506823
+  sha256: 8a3a7093ee10774ce7472d1a6d17fac1d09b0a3687e28dfe2a616dfaecb2c529
+  vertices: 6890
+  joints: 45
+  shape_coefficients: 10
+  finite_forward: true
+smplx:
+  path: ../body_models/smplx/SMPLX_NEUTRAL.npz
+  format: npz
+  size_bytes: 108752058
+  sha256: 376021446ddc86e99acacd795182bbef903e61d33b76b9d8b359c2b0865bd992
+  vertices: 10475
+  joints: 127
+  shape_coefficients: 16
+  expression_coefficients: 10
+  finite_forward: true
+original_smpl_pickle_used: false
+license_files_redistributed: false

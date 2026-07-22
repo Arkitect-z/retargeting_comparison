@@ -1,0 +1,14 @@
+sequence_id: dance1_subject1_f000000_000600
+source_file: data/lafan1/dance1_subject1.bvh
+source_sha256: 9a285b61bb0446aa4c919c62247ff895eb158bc693be3b7477d31ef070995d73
+frame_start: 0
+frame_end: 600
+cropped_source_file: data/pilot/dance1_subject1_f000000_000600.bvh
+cropped_sha256: 67e62e7e6e02cd54c8659fd1de9974032639e82948ebb86e2a8c82a060b7c6b5
+fps: 30.000300003000028
+num_frames: 600
+duration_s: 19.9998
+selection_rule: source-only filters; minimize abs(duration-20s); lexicographic filename
+  tie-break
+selected_before_any_retarget_run: true
+canonical_path: source/canonical_human/dance1_subject1_f000000_000600.npz

@@ -1,0 +1,28 @@
+stage: 1
+full_lafan_authorized: false
+pilot_target_duration_s: 20.0
+pilot_duration_range_s: [10.0, 30.0]
+source_position_scale: 0.01
+canonical_quaternion_order: wxyz
+canonical_joint_count: 29
+minimum_completion_ratio: 0.95
+body_models_root: ../body_models
+lafan_root: data/lafan1
+canonical_robot:
+  upstream: https://github.com/amazon-far/holosoma.git
+  commit: 5f48635a3624656a5f46a07df26d43187e59f855
+  xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.xml
+timing:
+  cold_runs: 1
+  warmup_runs: 1
+  measured_warm_runs: 3
+  randomization_seed: 20260722
+conditional_candidates:
+  order: [protomotions_v3, phc]
+  per_method_limit_s: 7200
+  total_limit_s: 14400
+stage2_budget:
+  wall_time_hours: 48
+  storage_gb: 200
+  projection_safety_factor: 1.5
+

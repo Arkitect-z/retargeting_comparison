@@ -1,0 +1,8 @@
+captured_at_utc: '2026-07-22T11:30:38.263925+00:00'
+platform: Linux-6.8.0-124-generic-x86_64-with-glibc2.35
+python: 3.10.19
+cpu_count: 32
+numpy: 2.2.6
+gpu: NVIDIA GeForce RTX 3090 Ti, GPU-0d72f444-2612-ff58-fd45-e1bc8e8524c7, 24564 MiB,
+  580.159.03
+full_lafan_authorized: false

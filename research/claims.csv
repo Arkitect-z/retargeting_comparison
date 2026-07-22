@@ -1,0 +1,2 @@
+claim_id,claim_text,claim_type,source_or_experiment,method,metric,result_file,figure,scope,caveat,status
+scope-001,A solver or tracker alone is not a complete human-to-G1 retargeter.,scope,first-party code and documented I/O,multiple,,,,Stage 0 taxonomy,Classification may change at a future frozen revision.,supported

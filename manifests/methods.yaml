@@ -1,0 +1,12 @@
+frozen_at_utc: '2026-07-22T11:30:38.271829+00:00'
+required:
+- sparse
+- dense
+- gmr
+- omniretarget
+conditional_order:
+- protomotions_v3
+- phc
+conditional_per_method_limit_s: 7200
+full_lafan_authorized: false
+hard_stop_message: FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

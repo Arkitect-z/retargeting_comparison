@@ -1,0 +1,2 @@
+adapter,sequence_id,common_joints,root_aligned_mpjpe_m,max_joint_error_m,frame_count_match,fps_match,left_right_match,status,caveat
+canonical_bvh_vs_gmr_lafan,dance1_subject1_f000000_000600,8,6.565953028204716e-16,3.621437911838241e-15,true,true,true,passed,"GMR first-party LAFAN loader used as the independent reference"

@@ -1,0 +1,24 @@
+dataset: LAFAN1
+official_origin:
+  repository: https://github.com/ubisoft/ubisoft-laforge-animation-dataset.git
+  commit: 94084601bacdf9cc3764b5c73daaeccae6035fac
+  archive_path: lafan1/lafan1.zip
+  archive_size_bytes: 144051503
+  archive_sha256: ea918082b500a5d158e9d3aa39039df04cd42e25f5c02fe8f7e88e8e9365a977
+  license: CC-BY-NC-ND-4.0
+  download_status: blocked_by_upstream_git_lfs_budget
+download_fallback:
+  repository: https://huggingface.co/datasets/johnny095212/lafan1
+  revision: 10542a0e0c983464b566ebf5c49e78a250279ec4
+  representation: extracted BVH files
+  claimed_official_host: false
+validation:
+  bvh_file_count: 77
+  total_frames: 496672
+  unique_nominal_fps: 30
+  filenames_match_official_inventory: true
+  transformed_before_pilot_selection: false
+redistribution:
+  raw_files_committed_to_git: false
+  cropped_pilot_committed_to_git: false
+
