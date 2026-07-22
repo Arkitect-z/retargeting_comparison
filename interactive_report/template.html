@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Interactive Stage 1 scientific report for human-to-Unitree-G1 motion retargeting.">
+  <title>Human-to-G1 Retargeting · Interactive Stage 1 Report</title>
+  <style>__RTCMP_INLINE_CSS__</style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to report</a>
+  <div class="reading-progress" aria-hidden="true"><span id="reading-progress-bar"></span></div>
+
+  <header class="hero" id="top" data-chapter="Opening">
+    <nav class="topbar" aria-label="Report navigation">
+      <a class="wordmark" href="#top" aria-label="Retargeting Comparison home">
+        <span class="wordmark-mark" aria-hidden="true">R↗</span>
+        <span>RETARGETING<br>COMPARISON</span>
+      </a>
+      <div class="topbar-meta">
+        <span>STAGE 1 · PILOT</span>
+        <span class="status-dot">FROZEN EVIDENCE</span>
+      </div>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle color theme" title="Toggle color theme">
+        <span aria-hidden="true">◐</span>
+      </button>
+    </nav>
+
+    <div class="hero-grid">
+      <div class="hero-copy reveal">
+        <p class="eyebrow"><span>Scientific report</span><span>22 July 2026</span></p>
+        <h1>When fewer constraints<br><em>move faster</em>—<br>but reveal more.</h1>
+        <p class="hero-deck">A controlled, source-frozen comparison of human-motion retargeting to the Unitree G1. Four operating points, one 20-second LAFAN1 Pilot, and two interaction ablations—reported without a composite score.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#frontier">Explore the evidence</a>
+          <a class="button ghost" href="PILOT_REPORT.md">Read the Markdown report</a>
+        </div>
+      </div>
+
+      <aside class="verdict-card reveal" aria-labelledby="verdict-title">
+        <div class="verdict-topline"><span>STAGE 1 DECISION</span><span>01 / 07</span></div>
+        <div class="verdict-orbit" aria-hidden="true">
+          <svg viewBox="0 0 260 260" role="presentation">
+            <circle class="orbit-ring ring-one" cx="130" cy="130" r="104"></circle>
+            <circle class="orbit-ring ring-two" cx="130" cy="130" r="76"></circle>
+            <path class="orbit-arc" d="M 50 198 A 104 104 0 1 1 224 176"></path>
+            <circle class="orbit-node node-one" cx="50" cy="198" r="7"></circle>
+            <circle class="orbit-node node-two" cx="224" cy="176" r="7"></circle>
+          </svg>
+          <div class="verdict-center">
+            <strong id="verdict-title">GO</strong>
+            <span>WITH CHANGES</span>
+          </div>
+        </div>
+        <p>The evidence is complete. The proposed serial Full-LAFAN runtime exceeds the frozen 48-hour gate.</p>
+        <a href="#budget">See the budget boundary <span aria-hidden="true">↓</span></a>
+      </aside>
+    </div>
+
+    <div class="pipeline-wrap reveal" aria-label="Conceptual data pipeline; schematic, not measured data">
+      <div class="pipeline-label"><span>CONCEPTUAL PIPELINE</span><span>SCHEMATIC · NOT TO SCALE</span></div>
+      <svg class="pipeline" viewBox="0 0 1200 200" role="img" aria-labelledby="pipeline-title pipeline-desc">
+        <title id="pipeline-title">Human-to-G1 evaluation pipeline</title>
+        <desc id="pipeline-desc">A frozen source passes through canonicalization, four retargeting methods, and a common evaluator.</desc>
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z"></path></marker>
+          <filter id="soft-glow"><feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
+        </defs>
+        <g class="pipe-links">
+          <path d="M155 100 H330"></path><path d="M470 100 H625"></path><path d="M840 100 H1020"></path>
+        </g>
+        <g class="pipe-node source-node" transform="translate(50 55)"><rect width="105" height="90" rx="18"></rect><circle cx="24" cy="26" r="7"></circle><path d="M24 35v22m0-12L10 55m14-10 15 8M24 57 12 76m12-19 16 20"></path><text x="53" y="28">HUMAN</text><text x="53" y="49">LAFAN1</text><text x="53" y="70">600 F</text></g>
+        <g class="pipe-node canonical-node" transform="translate(330 55)"><rect width="140" height="90" rx="18"></rect><path d="M28 23v44M17 32h22M17 55h22"></path><text x="55" y="31">CANONICAL</text><text x="55" y="52">SOURCE</text><text x="55" y="72">HASHED</text></g>
+        <g class="method-cluster" transform="translate(625 28)">
+          <rect class="cluster-shell" width="215" height="144" rx="22"></rect>
+          <g transform="translate(16 16)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">SPARSE</text></g>
+          <g transform="translate(112 16)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">DENSE</text></g>
+          <g transform="translate(16 76)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">GMR</text></g>
+          <g transform="translate(112 76)"><circle cx="8" cy="8" r="8"></circle><text x="25" y="13">OMNI</text></g>
+        </g>
+        <g class="pipe-node evaluator-node" transform="translate(1020 55)"><rect width="130" height="90" rx="18"></rect><path d="M22 66 40 45l14 9 25-30 20 15"></path><text x="20" y="23">COMMON</text><text x="20" y="82">EVALUATOR</text></g>
+        <circle class="data-pulse pulse-one" cx="155" cy="100" r="5"></circle>
+        <circle class="data-pulse pulse-two" cx="470" cy="100" r="5"></circle>
+        <circle class="data-pulse pulse-three" cx="840" cy="100" r="5"></circle>
+      </svg>
+    </div>
+  </header>
+
+  <nav class="chapter-rail" aria-label="Report chapters">
+    <a href="#design" data-label="Design"><span>01</span></a>
+    <a href="#frontier" data-label="Frontier"><span>02</span></a>
+    <a href="#frame-story" data-label="Motion"><span>03</span></a>
+    <a href="#sparse" data-label="Ambiguity"><span>04</span></a>
+    <a href="#interaction" data-label="Interaction"><span>05</span></a>
+    <a href="#timing" data-label="Timing"><span>06</span></a>
+    <a href="#budget" data-label="Decision"><span>07</span></a>
+  </nav>
+
+  <main id="main-content">
+    <section id="design" class="chapter chapter-light" data-chapter="01 · Design">
+      <div class="section-heading reveal">
+        <p class="section-index">01 · EXPERIMENTAL DESIGN</p>
+        <h2>One source.<br>Four operating points.<br><em>No moving goalposts.</em></h2>
+        <p>The sequence was selected from source-only motion features before any retargeter ran. All outputs use the same 29-DoF G1 evaluator, the same coordinate contract, and an explicit completion threshold.</p>
+      </div>
+      <div class="stat-grid" id="design-stats" aria-label="Experiment summary statistics"></div>
+      <div class="design-ledger reveal">
+        <div class="ledger-copy">
+          <p class="micro-label">CONTROLLED COMPARISON</p>
+          <h3>Sparse and Dense differ only in their declared target set.</h3>
+          <p>Solver, limits, scaling, warm start, iteration budget, damping, posture regularization, and initialization are held constant. GMR and OmniRetarget run at frozen official commits through isolated adapters.</p>
+        </div>
+        <div class="method-legend" id="method-ledger"></div>
+      </div>
+      <div class="scope-note reveal"><span>Scope boundary</span><p>This is a single-sequence Pilot—not a dataset-level ranking. Interaction evidence covers exactly two cases.</p></div>
+    </section>
+
+    <section id="frontier" class="chapter chapter-ink" data-chapter="02 · Frontier">
+      <div class="section-heading inverse reveal">
+        <p class="section-index">02 · QUALITY × SPEED</p>
+        <h2>The frontier is not<br>a finish line.</h2>
+        <p>Choose the error lens. Every point remains a separate operating point; lower and further left is better. Circle area encodes artifact rate.</p>
+      </div>
+      <div class="chart-shell dark-shell reveal">
+        <div class="chart-toolbar">
+          <div class="segmented" id="frontier-metric" role="group" aria-label="Select quality metric">
+            <button type="button" data-value="rf_kpe_all_mean_m" class="active">All body</button>
+            <button type="button" data-value="rf_kpe_targeted_mean_m">Hands + feet</button>
+            <button type="button" data-value="rf_kpe_untracked_mean_m">Untracked body</button>
+          </div>
+          <div class="chart-key"><span class="size-key"></span> Area = artifact rate</div>
+        </div>
+        <div class="chart-stage tall"><svg id="frontier-chart" role="img" aria-label="Interactive quality versus speed scatter plot"></svg><div class="tooltip" id="frontier-tooltip" role="status"></div></div>
+        <div class="chart-annotation" id="frontier-annotation" aria-live="polite"></div>
+      </div>
+      <div class="finding-grid" id="frontier-findings"></div>
+    </section>
+
+    <section id="frame-story" class="chapter chapter-paper" data-chapter="03 · Motion">
+      <div class="section-heading reveal">
+        <p class="section-index">03 · INSIDE THE MOTION</p>
+        <h2>Twenty seconds,<br><em>frame by frame.</em></h2>
+        <p>Scrub the frozen sequence to see how error and artifacts evolve. The playhead is an interface animation over measured values—not a new simulation.</p>
+      </div>
+      <div class="motion-console reveal">
+        <div class="motion-controls">
+          <div class="method-toggles" id="timeline-methods" role="group" aria-label="Toggle methods"></div>
+          <label class="select-label" for="timeline-metric">Metric
+            <select id="timeline-metric">
+              <option value="rf_kpe_all_m">RF-KPE all</option>
+              <option value="rf_kpe_targeted_m">Targeted KPE</option>
+              <option value="rf_kpe_untracked_m">Untracked KPE</option>
+              <option value="ground_penetration_depth_m">Ground penetration</option>
+              <option value="pose_jump_rms_m">Pose jump</option>
+            </select>
+          </label>
+          <button class="play-button" id="timeline-play" type="button" aria-label="Play measured sequence"><span aria-hidden="true">▶</span> Play</button>
+        </div>
+        <div class="chart-stage timeline-stage"><svg id="timeline-chart" role="img" aria-label="Per-frame metric timeline"></svg><div class="tooltip" id="timeline-tooltip" role="status"></div></div>
+        <input id="timeline-scrubber" class="scrubber" type="range" min="0" max="599" value="0" aria-label="Sequence frame">
+        <div class="frame-readout">
+          <div><span>FRAME</span><strong id="frame-number">000</strong></div>
+          <div><span>TIME</span><strong id="frame-time">0.00 s</strong></div>
+          <div class="frame-values" id="frame-values"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sparse" class="chapter chapter-cobalt" data-chapter="04 · Ambiguity">
+      <div class="section-heading inverse reveal">
+        <p class="section-index">04 · SPARSE AMBIGUITY</p>
+        <h2>Same targets.<br>Different hidden poses.</h2>
+        <p>Three deterministic initial postures expose how an underconstrained solve can preserve visible targets while diverging elsewhere in the robot body.</p>
+      </div>
+      <div class="seed-layout reveal">
+        <div class="seed-diagram" aria-label="Animated schematic of three sparse initial seeds">
+          <svg id="seed-orbit" viewBox="0 0 420 420" role="img" aria-label="Sparse seed divergence schematic">
+            <circle class="seed-ring" cx="210" cy="210" r="142"></circle>
+            <path id="seed-path-a" d="M210 210 C145 160 95 118 70 82"></path>
+            <path id="seed-path-b" d="M210 210 C274 160 326 118 350 82"></path>
+            <path id="seed-path-c" d="M210 210 C210 282 210 322 210 365"></path>
+            <circle class="seed-core" cx="210" cy="210" r="24"></circle>
+            <circle class="seed-node seed-neutral" cx="70" cy="82" r="18"></circle>
+            <circle class="seed-node seed-a" cx="350" cy="82" r="18"></circle>
+            <circle class="seed-node seed-b" cx="210" cy="365" r="18"></circle>
+            <text x="45" y="47">NEUTRAL</text><text x="336" y="47">A</text><text x="203" y="405">B</text>
+            <text class="seed-center-label" x="210" y="215" text-anchor="middle">TARGETS</text>
+          </svg>
+          <div class="seed-frame"><span>PLAYHEAD</span><strong id="seed-frame-number">000</strong></div>
+        </div>
+        <div class="seed-chart-panel">
+          <div class="segmented light-segmented" id="seed-pairs" role="group" aria-label="Choose seed pair"></div>
+          <div class="chart-stage"><svg id="seed-chart" role="img" aria-label="Sparse seed divergence through time"></svg></div>
+          <input id="seed-scrubber" class="scrubber light-scrubber" type="range" min="0" max="599" value="0" aria-label="Sparse divergence frame">
+          <div class="seed-summary" id="seed-summary"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="interaction" class="chapter chapter-light" data-chapter="05 · Interaction">
+      <div class="section-heading reveal">
+        <p class="section-index">05 · INTERACTION ABLATION</p>
+        <h2>What changes when<br><em>hard constraints unlock?</em></h2>
+        <p>Full enables non-penetration and foot sticking. No-Hard disables only those two gates; joint limits, input, initialization, solver, and iteration budget remain fixed.</p>
+      </div>
+      <div class="interaction-console reveal">
+        <div class="case-switch segmented" id="case-switch" role="group" aria-label="Select interaction case">
+          <button type="button" data-value="box" class="active">Large box</button>
+          <button type="button" data-value="climb">Climb</button>
+        </div>
+        <div class="constraint-gates" id="constraint-gates" aria-label="Full and No-Hard constraint states"></div>
+        <div class="interaction-grid">
+          <div class="chart-stage interaction-stage"><svg id="interaction-chart" role="img" aria-label="Full versus No-Hard metric comparison"></svg></div>
+          <div class="interaction-readout" id="interaction-readout"></div>
+        </div>
+        <p class="metric-footnote">The primary penetration rate counts depth &gt;1.1 mm: the frozen 1 mm constraint tolerance plus a 0.1 mm numerical margin. “Any negative” remains visible separately.</p>
+      </div>
+    </section>
+
+    <section id="timing" class="chapter chapter-paper" data-chapter="06 · Timing">
+      <div class="section-heading reveal">
+        <p class="section-index">06 · TIMING PROTOCOL</p>
+        <h2>Cold once.<br>Warm once.<br><em>Measure three times.</em></h2>
+        <p>Initialization, import, and compile costs remain separate from steady-state RTF. Select a timing layer to inspect every recorded repetition.</p>
+      </div>
+      <div class="chart-shell reveal">
+        <div class="chart-toolbar">
+          <div class="segmented" id="timing-mode" role="group" aria-label="Select timing layer">
+            <button type="button" data-value="end_to_end_rtf" class="active">End-to-end</button>
+            <button type="button" data-value="native_core_rtf">Native core</button>
+          </div>
+          <div class="chart-key"><span class="cold-key"></span> cold <span class="warmup-key"></span> warm-up <span class="warm-key"></span> measured warm</div>
+        </div>
+        <div class="chart-stage timing-stage"><svg id="timing-chart" role="img" aria-label="Cold and warm timing repetitions"></svg><div class="tooltip" id="timing-tooltip" role="status"></div></div>
+      </div>
+    </section>
+
+    <section id="budget" class="chapter chapter-sand" data-chapter="07 · Decision">
+      <div class="section-heading reveal">
+        <p class="section-index">07 · STAGE 2 GATE</p>
+        <h2>The evidence says<br><em>pause before scale.</em></h2>
+        <p>The frozen estimate includes steady RTF, measured startup and adapter overhead per sequence, observed retries, and a 1.5× safety factor.</p>
+      </div>
+      <div class="budget-board reveal">
+        <div class="budget-headline">
+          <div><span>PROJECTED SERIAL WALL TIME</span><strong id="budget-hours">67.95 h</strong></div>
+          <div class="budget-verdict"><span>48 h limit</span><strong>+19.95 h</strong></div>
+        </div>
+        <div class="budget-track" id="budget-track" aria-label="Projected method runtime against 48-hour budget"></div>
+        <div class="budget-legend" id="budget-legend"></div>
+        <div class="what-if">
+          <div>
+            <span class="micro-label">ILLUSTRATIVE SCHEDULING WHAT-IF</span>
+            <h3><span id="worker-count">1</span> idealized worker<span id="worker-plural"></span></h3>
+            <p>Simple division for planning only. It is not a measured scaling result, resource commitment, or Stage 2 authorization.</p>
+          </div>
+          <input id="worker-slider" type="range" min="1" max="4" value="1" step="1" aria-label="Idealized parallel worker count">
+          <div class="what-if-result"><strong id="what-if-hours">67.95 h</strong><span id="what-if-status">over budget</span></div>
+        </div>
+        <div class="budget-cards">
+          <article><span>STORAGE</span><strong id="storage-value">3.47 GB</strong><small>of 200 GB</small></article>
+          <article><span>OBSERVED RETRIES</span><strong>0%</strong><small>formal runs</small></article>
+          <article><span>SAFETY FACTOR</span><strong>1.5×</strong><small>runtime + storage</small></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="evidence" class="chapter chapter-ink evidence-section" data-chapter="Evidence">
+      <div class="section-heading inverse reveal">
+        <p class="section-index">EVIDENCE LEDGER</p>
+        <h2>Every claim has<br>a trail back to bytes.</h2>
+        <p>Open the provenance ledger to inspect frozen repositories, model hashes, adapter checks, and every input embedded in this report.</p>
+      </div>
+      <div class="evidence-grid reveal">
+        <div class="evidence-list" id="evidence-list"></div>
+        <aside class="evidence-links">
+          <p class="micro-label">SOURCE TABLES</p>
+          <a href="metrics/core_summary.csv">Core summary <span>CSV ↗</span></a>
+          <a href="metrics/interaction_summary.csv">Interaction summary <span>CSV ↗</span></a>
+          <a href="metrics/timing_raw.csv">Raw timing <span>CSV ↗</span></a>
+          <a href="metrics/stage2_projection.csv">Stage 2 projection <span>CSV ↗</span></a>
+          <a href="manifests/artifacts.csv">Artifact manifest <span>CSV ↗</span></a>
+        </aside>
+      </div>
+    </section>
+
+    <section class="closing" data-chapter="Conclusion">
+      <p class="section-index">CONCLUSION</p>
+      <h2>Proceed with the harness.<br><em>Change the scaling plan.</em></h2>
+      <p>Stage 1 answers the Pilot question and preserves its limitations. Before Stage 2, keep non-core candidates excluded, repeat timing only on a frozen subset, test optimized or sequence-parallel OmniRetarget execution, or explicitly rename a deterministic reduced-LAFAN design.</p>
+      <div class="closing-actions"><a class="button primary" href="GO_NO_GO.md">Read the decision memo</a><a class="button ghost" href="REPRODUCE_PILOT.md">Reproduce the Pilot</a></div>
+    </section>
+  </main>
+
+  <footer>
+    <div><span>HUMAN-TO-G1 RETARGETING</span><span>STAGE 1 · PILOT · V1</span></div>
+    <p>FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.</p>
+  </footer>
+
+  <noscript><div class="noscript">This report needs JavaScript for interactive charts. All evidence remains available in PILOT_REPORT.md and metrics/.</div></noscript>
+  <script id="rtcmp-data" type="application/json">__RTCMP_INLINE_DATA__</script>
+  <script>__RTCMP_INLINE_JS__</script>
+</body>
+</html>

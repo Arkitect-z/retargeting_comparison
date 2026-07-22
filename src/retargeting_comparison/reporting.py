@@ -530,7 +530,7 @@ The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from 
 2. Run `rtcmp audit`, `rtcmp prepare-source`, and `rtcmp validate-models`.
 3. Run core methods in `manifests/experiment_order.yaml`; Sparse uses neutral, A, and B.
 4. Run `rtcmp run-interaction --case box --variant full`, repeat with `no-hard`, then repeat both variants for `climb`.
-5. Run `rtcmp build-report` and `rtcmp validate-stage1`.
+5. Run `rtcmp build-report` (which also rebuilds `INTERACTIVE_REPORT.html`) and `rtcmp validate-stage1`.
 
 Every run has an atomic status manifest and immutable output hash. Existing successful output is reused; a failed retry receives a new attempt directory. Raw datasets, body models, upstream history, trajectories, logs, and caches remain ignored.
 """,
@@ -618,6 +618,9 @@ def artifact_manifest(root: Path) -> None:
     for folder in ("metrics", "figures", "manifests"):
         candidates.extend(path for path in (root / folder).rglob("*") if path.is_file())
     candidates.extend(root / report for report in REPORTS)
+    interactive_report = root / "INTERACTIVE_REPORT.html"
+    if interactive_report.is_file():
+        candidates.append(interactive_report)
     output = root / "manifests" / "artifacts.csv"
     with output.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(
@@ -650,4 +653,7 @@ def build_report(repo_root: str | Path = ".") -> None:
     build_figures(root, timing, seed_summary, interaction)
     build_markdown(root, core, timing, seed_summary, interaction, projection)
     publish_manifests(root)
+    from .interactive_report import build_interactive_report
+
+    build_interactive_report(root)
     artifact_manifest(root)

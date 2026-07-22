@@ -46,6 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
     interaction.add_argument("--repo-root", default=".")
     report = sub.add_parser("build-report", help="build Stage 1 figures and Markdown reports")
     report.add_argument("--repo-root", default=".")
+    interactive = sub.add_parser(
+        "build-interactive-report",
+        help="build the standalone interactive Stage 1 research report",
+    )
+    interactive.add_argument("--repo-root", default=".")
+    interactive.add_argument("--output", default="INTERACTIVE_REPORT.html")
     validate = sub.add_parser("validate-stage1", help="validate Stage 1 and its hard stop")
     validate.add_argument("--repo-root", default=".")
     return parser
@@ -139,6 +145,11 @@ def main(argv: list[str] | None = None) -> int:
         from .reporting import build_report
 
         build_report(args.repo_root)
+        return 0
+    if args.command == "build-interactive-report":
+        from .interactive_report import build_interactive_report
+
+        print(build_interactive_report(args.repo_root, args.output))
         return 0
     raise SystemExit(f"Command implementation pending: {args.command}")
 

@@ -43,7 +43,9 @@ in [`PILOT_REPORT.md`](PILOT_REPORT.md), [`METHOD_SCOPE.md`](METHOD_SCOPE.md),
 [`SPARSE_IK_ANALYSIS.md`](SPARSE_IK_ANALYSIS.md), and
 [`INTERACTION_CASE_STUDY.md`](INTERACTION_CASE_STUDY.md). The concise briefing
 is available as [`EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md) and the
-12-section [`PRESENTATION.md`](PRESENTATION.md). Machine-readable metrics,
+12-section [`PRESENTATION.md`](PRESENTATION.md). A dependency-free visual
+narrative is available in [`INTERACTIVE_REPORT.html`](INTERACTIVE_REPORT.html);
+rebuild it independently with `rtcmp build-interactive-report`. Machine-readable metrics,
 figure source data, provenance, and validation results live under `metrics/`,
 `figures/`, and `manifests/`.
 
