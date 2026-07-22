@@ -9,9 +9,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-
 def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
@@ -43,13 +40,16 @@ def atomic_write_json(path: str | Path, value: Any) -> None:
 
 
 def atomic_write_yaml(path: str | Path, value: Any) -> None:
+    import yaml
+
     _atomic_write(Path(path), yaml.safe_dump(value, sort_keys=False, allow_unicode=True))
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:
+    import yaml
+
     with Path(path).open(encoding="utf-8") as stream:
         value = yaml.safe_load(stream)
     if not isinstance(value, dict):
         raise ValueError(f"Expected a mapping in {path}")
     return value
-

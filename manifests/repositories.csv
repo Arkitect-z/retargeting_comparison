@@ -1,6 +1,6 @@
 name,url,commit,status,license,role
 retargeting_comparison,https://github.com/Arkitect-z/retargeting_comparison.git,0e7df72ec5fe6fa2abacf098cf4146743aaba804,dirty,Apache-2.0,original harness
-holosoma,https://github.com/amazon-far/holosoma.git,5f48635a3624656a5f46a07df26d43187e59f855,pinned,verify upstream checkout,required retargeter and canonical G1 model
+holosoma,https://github.com/amazon-far/holosoma.git,5f48635a3624656a5f46a07df26d43187e59f855,pinned with one recorded flag patch,Apache-2.0,required retargeter and canonical G1 model
 GMR,https://github.com/YanjieZe/GMR.git,bb1bbe40774794fceb2a7c579a3464a28e68c844,clean,MIT,required retargeter
 LAFAN1 official metadata,https://github.com/ubisoft/ubisoft-laforge-animation-dataset.git,94084601bacdf9cc3764b5c73daaeccae6035fac,LFS object unavailable: upstream quota exceeded,CC-BY-NC-ND-4.0,canonical dataset origin and archive SHA
 LAFAN1 per-file mirror fallback,https://huggingface.co/datasets/johnny095212/lafan1,10542a0e0c983464b566ebf5c49e78a250279ec4,validated against official sequence/frame/fps invariants,inherits original dataset terms,download fallback; not represented as an official host

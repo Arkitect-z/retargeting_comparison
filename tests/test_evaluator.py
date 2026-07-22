@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from retargeting_comparison.evaluator import HUMAN_SEMANTIC_JOINTS, evaluate_motion
 from retargeting_comparison.robot_model import CanonicalRobotModel, default_robot_scene
 from retargeting_comparison.schemas import CanonicalG1, CanonicalHuman
+
+
+pytestmark = pytest.mark.skipif(
+    not default_robot_scene().is_file(), reason="frozen Holosoma checkout is not present"
+)
 
 
 def _matched_pair(robot: CanonicalRobotModel) -> tuple[CanonicalHuman, CanonicalG1]:

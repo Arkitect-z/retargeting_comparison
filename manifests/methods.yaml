@@ -1,9 +1,25 @@
 frozen_at_utc: '2026-07-22T11:30:38.271829+00:00'
 required:
-- sparse
-- dense
-- gmr
-- omniretarget
+- name: sparse
+  implementation: controlled Mink baseline
+  config: configs/controlled_mink.yaml
+  seeds: [neutral, A, B]
+- name: dense
+  implementation: controlled Mink baseline
+  config: configs/controlled_mink.yaml
+  seeds: [neutral]
+- name: gmr
+  repository: https://github.com/YanjieZe/GMR.git
+  commit: bb1bbe40774794fceb2a7c579a3464a28e68c844
+  license: MIT
+  native_environment: robot
+- name: omniretarget
+  upstream_project: Holosoma
+  repository: https://github.com/amazon-far/holosoma.git
+  commit: 5f48635a3624656a5f46a07df26d43187e59f855
+  license: Apache-2.0
+  native_environment: hsretargeting
+  patch: patches/holosoma/interaction-hard-constraint-flags.patch
 conditional_order:
 - protomotions_v3
 - phc

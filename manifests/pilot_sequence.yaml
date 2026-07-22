@@ -12,3 +12,5 @@ selection_rule: source-only filters; minimize abs(duration-20s); lexicographic f
   tie-break
 selected_before_any_retarget_run: true
 canonical_path: source/canonical_human/dance1_subject1_f000000_000600.npz
+full_lafan_authorized: false
+hard_stop_message: FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

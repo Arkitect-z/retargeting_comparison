@@ -25,8 +25,18 @@ pytest
 See `pilot/REPRODUCE_PILOT.md` after the Stage 1 run for frozen commands and
 artifact locations.
 
+Upstream checkout and environment instructions are in
+[`docs/UPSTREAM_SETUP.md`](docs/UPSTREAM_SETUP.md). A normal Pilot method run
+uses one fresh cold process followed by one warm-up and three measured runs:
+
+```bash
+rtcmp run-method --method sparse --sequence manifests/pilot_sequence.yaml --seed neutral
+rtcmp run-method --method dense --sequence manifests/pilot_sequence.yaml
+rtcmp run-method --method gmr --sequence manifests/pilot_sequence.yaml
+rtcmp run-method --method omniretarget --sequence manifests/pilot_sequence.yaml
+```
+
 ## License and assets
 
 Original code is licensed under Apache-2.0. Upstream methods and restricted
 data/model assets retain their own licenses and are not redistributed here.
-

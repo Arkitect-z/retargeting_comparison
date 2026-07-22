@@ -1,0 +1,45 @@
+captured_at_utc: '2026-07-22T11:56:00Z'
+launcher_contract:
+  threads: 1
+  variables: [OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS, NUMEXPR_NUM_THREADS]
+  visualization: false
+environments:
+  capture:
+    role: harness, controlled Mink baselines, evaluator, reports
+    python: '3.10.19'
+    packages:
+      numpy: 2.2.6
+      scipy: 1.13.1
+      mujoco: 3.8.1
+      mink: 1.1.1
+      qpsolvers: 4.12.0
+      daqp: 0.8.7
+      pandas: 2.3.3
+      pyarrow: 23.0.1
+  robot:
+    role: clean GMR worker; SciPy supports scalar_first quaternion API
+    python: '3.11'
+    packages:
+      numpy: 1.26.0
+      scipy: 1.15.3
+      mujoco: 3.8.1
+      mink: 1.1.1
+      qpsolvers: 4.12.0
+      daqp: 0.8.7
+  hsretargeting:
+    role: clean Holosoma worker dependencies
+    python: '3.11.15'
+    packages:
+      numpy: 2.3.5
+      scipy: 1.17.1
+      mujoco: 3.8.1
+      cvxpy: 1.8.2
+      clarabel: 0.11.1
+      trimesh: 4.12.2
+      tyro: 1.0.13
+      viser: 1.0.27
+      yourdfpy: 0.0.60
+notes:
+  - Upstream checkouts are imported by absolute frozen paths in fresh subprocesses.
+  - RTCMP_CAPTURE_PYTHON, RTCMP_ROBOT_PYTHON, and RTCMP_HSRETARGETING_PYTHON override executable discovery.
+  - Raw environment exports may contain machine-specific editable paths and are therefore not published.

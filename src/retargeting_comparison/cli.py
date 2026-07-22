@@ -27,8 +27,13 @@ def build_parser() -> argparse.ArgumentParser:
     models.add_argument("--config", default="configs/stage1.yaml")
     models.add_argument("--output", default="manifests/body_models.yaml")
     run_method = sub.add_parser("run-method", help="run one frozen retargeting method")
-    run_method.add_argument("--method", required=True)
+    run_method.add_argument(
+        "--method", choices=("sparse", "dense", "gmr", "omniretarget", "holosoma"), required=True
+    )
     run_method.add_argument("--sequence", required=True)
+    run_method.add_argument("--seed", choices=("neutral", "A", "B"), default="neutral")
+    run_method.add_argument("--max-frames", type=int)
+    run_method.add_argument("--repo-root", default=".")
     evaluate = sub.add_parser("evaluate", help="evaluate one canonical run")
     evaluate.add_argument("--run", required=True)
     evaluate.add_argument("--source")
@@ -90,6 +95,20 @@ def main(argv: list[str] | None = None) -> int:
         table, summary = evaluate_motion(human, motion, robot)
         save_evaluation(table, summary, args.output_dir, run_path.stem)
         return 0
+    if args.command == "run-method":
+        from .runner import run_method
+
+        manifest = run_method(
+            args.method,
+            args.sequence,
+            repo_root=args.repo_root,
+            seed=args.seed,
+            max_frames=args.max_frames,
+        )
+        print(f"{manifest.run_id}: {manifest.status.value}")
+        from .schemas import RunStatus
+
+        return 0 if manifest.status in {RunStatus.SUCCEEDED, RunStatus.INCOMPLETE} else 1
     if args.command == "validate-stage1":
         print(FULL_LAFAN_STOP_MESSAGE)
         return 0

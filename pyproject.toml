@@ -23,6 +23,7 @@ evaluation = [
   "pyarrow>=12",
   "scipy>=1.10",
 ]
+methods = ["mink>=0.0.8", "qpsolvers[daqp]>=4.5"]
 models = ["smplx>=0.1.28", "torch>=2.1"]
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 

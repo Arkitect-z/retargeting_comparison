@@ -189,6 +189,9 @@ class RunManifest:
     stdout_log: str | None = None
     stderr_log: str | None = None
     output_path: str | None = None
+    output_sha256: str | None = None
+    source_sha256: str | None = None
+    timing_path: str | None = None
     message: str | None = None
 
     def save(self, path: str | Path) -> None:
@@ -196,3 +199,8 @@ class RunManifest:
         data["status"] = self.status.value
         atomic_write_json(path, data)
 
+    @classmethod
+    def load(cls, path: str | Path) -> "RunManifest":
+        data = json.loads(Path(path).read_text())
+        data["status"] = RunStatus(data["status"])
+        return cls(**data)
