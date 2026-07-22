@@ -2,21 +2,24 @@
   "capture_suite": {
     "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src conda run -n capture python -m pytest -q -p no:cacheprovider",
     "environment": "conda:capture",
-    "passed": 31,
+    "passed": 35,
     "result": "passed"
   },
   "full_lafan_authorized": false,
   "rerun_recording": {
     "command": "conda run -n vis rerun rrd verify artifacts/visualization/stage1_comparison.rrd",
     "environment": "conda:vis",
+    "evaluator_protocol_sha256": "7c19e7109f17a5ff2aa69df8904f27e92583b480d89b82c8ca21939e7e5a710a",
     "frames": 600,
-    "instance_pose_component_chunks": 13776,
+    "manifest_schema_version": 3,
+    "methods": 6,
+    "output_sha256": "da7bfa764beee79ae08153f13ef3e94bf5dc08b10f5f37eaa1591d3a784f00ca",
     "rendering": "articulated_g1_visual_meshes",
     "rerun_version": "0.34.1",
     "result": "verified",
-    "visual_asset_count": 35,
-    "visual_asset_entities": 140
+    "robot_instances_per_frame": 17,
+    "visual_asset_count": 35
   },
-  "schema_version": 2,
+  "schema_version": 3,
   "verified_on": "2026-07-22"
 }

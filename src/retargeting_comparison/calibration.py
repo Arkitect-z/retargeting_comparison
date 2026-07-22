@@ -10,13 +10,15 @@ separately so scale choice and tracking error can be reported independently.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from .io_utils import atomic_write_yaml, load_yaml, sha256_file
-from .robot_model import CanonicalRobotModel
 from .schemas import CanonicalHuman
+
+if TYPE_CHECKING:
+    from .robot_model import CanonicalRobotModel
 
 
 EVALUATOR_SCHEMA_VERSION = 2

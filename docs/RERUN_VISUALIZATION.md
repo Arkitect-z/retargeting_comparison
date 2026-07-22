@@ -42,14 +42,19 @@ as a replacement for the full 600-frame acceptance recording.
 - **Root-frame pose overlay** removes each motion's root translation and yaw.
   This is the direct visual companion to root-frame KPE.
 - **Sparse seed ambiguity** overlays neutral, A, and B after root alignment.
-- Metric tabs show RF-KPE, root translation/yaw, ground penetration, binary
-  artifact flags, and solve time from the frozen evaluator outputs.
+- Metric tabs show RF-KPE, common-scale root translation, root yaw, ground
+  penetration, exact cause-triggered artifact flags, and solve time from the
+  frozen evaluator-v2 outputs.
 
 The gray/dark articulated surfaces are the official G1 visual assets. Colored
 diagnostic skeletons, labels, root paths, and foot markers identify methods;
 these layers can be toggled independently in the Rerun entity tree. Green feet
 denote frozen source stance without skating; red feet denote source stance with
 target foot speed above the frozen `1 cm/s` threshold; gray feet are in swing.
+The per-frame annotation spells out `SKATING-L`, `SKATING-R`, `PENETRATION`,
+`JOINT-LIMIT`, and `INVALID`; it never labels OmniRetarget or any whole method
+as “Artifact.” Source display scale and ground alignment are frozen once and
+are not inferred from a method output.
 Both the visual-link transforms and semantic FK are calculated from the same
 frozen Holosoma URDF and are regression-tested against the canonical MuJoCo
 evaluator at neutral and random qpos.
@@ -57,6 +62,7 @@ evaluator at neutral and random qpos.
 The `.rrd` contains derived motion visualization and remains outside public Git,
 just like canonical trajectories and videos. Its manifest records the source,
 all six output hashes, G1 URDF hash, Rerun version, frame count, and recording
-hash, every visual-mesh hash, and the articulated-rendering schema version.
+hash, evaluator-protocol hash, every visual-mesh hash, and the
+articulated-rendering schema version (`3`).
 
 FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

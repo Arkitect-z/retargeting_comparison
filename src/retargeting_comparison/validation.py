@@ -41,8 +41,8 @@ def _run_hashes_check(root: Path, sequence_id: str) -> bool:
 
 def _smoke_check(root: Path, sequence_id: str) -> bool:
     labels = (
-        "sparse-neutral-v2-smoke2",
-        "dense-v2-smoke2",
+        "sparse-neutral-v3-smoke2",
+        "dense-v3-smoke2",
         "gmr-smoke2",
         "omniretarget-smoke2",
     )
@@ -370,16 +370,27 @@ def _test_evidence_check(root: Path) -> bool:
     value = json.loads(path.read_text())
     capture = value.get("capture_suite", {})
     rerun = value.get("rerun_recording", {})
+    rerun_manifest_path = root / "manifests" / "rerun_visualization.json"
+    rerun_manifest = (
+        json.loads(rerun_manifest_path.read_text())
+        if rerun_manifest_path.is_file()
+        else {}
+    )
     return bool(
-        value.get("schema_version") == 2
+        value.get("schema_version") == 3
         and value.get("full_lafan_authorized") is False
         and capture.get("result") == "passed"
-        and int(capture.get("passed", 0)) >= 31
+        and int(capture.get("passed", 0)) >= 35
         and rerun.get("result") == "verified"
         and int(rerun.get("frames", 0)) == 600
         and rerun.get("rendering") == "articulated_g1_visual_meshes"
         and int(rerun.get("visual_asset_count", 0)) == 35
-        and int(rerun.get("visual_asset_entities", 0)) == 140
+        and int(rerun.get("methods", 0)) == 6
+        and int(rerun.get("robot_instances_per_frame", 0)) == 17
+        and int(rerun.get("manifest_schema_version", 0)) == 3
+        and rerun.get("output_sha256") == rerun_manifest.get("output_sha256")
+        and rerun.get("evaluator_protocol_sha256")
+        == rerun_manifest.get("evaluator_protocol_sha256")
     )
 
 

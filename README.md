@@ -30,8 +30,8 @@ Upstream checkout and environment instructions are in
 uses one fresh cold process followed by one warm-up and three measured runs:
 
 ```bash
-rtcmp run-method --method sparse --sequence manifests/pilot_sequence.yaml --seed neutral
-rtcmp run-method --method dense --sequence manifests/pilot_sequence.yaml
+rtcmp run-method --method sparse --sequence manifests/pilot_sequence.yaml --seed neutral --revision v3
+rtcmp run-method --method dense --sequence manifests/pilot_sequence.yaml --revision v3
 rtcmp run-method --method gmr --sequence manifests/pilot_sequence.yaml
 rtcmp run-method --method omniretarget --sequence manifests/pilot_sequence.yaml
 ```
@@ -43,7 +43,7 @@ in [`PILOT_REPORT.md`](PILOT_REPORT.md), [`METHOD_SCOPE.md`](METHOD_SCOPE.md),
 [`SPARSE_IK_ANALYSIS.md`](SPARSE_IK_ANALYSIS.md), and
 [`INTERACTION_CASE_STUDY.md`](INTERACTION_CASE_STUDY.md). The concise briefing
 is available as [`EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md) and the
-12-section [`PRESENTATION.md`](PRESENTATION.md). A dependency-free visual
+14-section [`PRESENTATION.md`](PRESENTATION.md). A dependency-free visual
 narrative is available in [`INTERACTIVE_REPORT.html`](INTERACTIVE_REPORT.html);
 rebuild it independently with `rtcmp build-interactive-report`. Machine-readable metrics,
 figure source data, provenance, and validation results live under `metrics/`,

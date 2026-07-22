@@ -1,16 +1,17 @@
 {
   "canonical_urdf": "external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.urdf",
   "canonical_urdf_sha256": "49c8b5ccb28ffd29ba32ceac596bededf83ba5eeaf1c49f49bfcb327cfcf0c7e",
+  "evaluator_protocol_sha256": "7c19e7109f17a5ff2aa69df8904f27e92583b480d89b82c8ca21939e7e5a710a",
   "frame_end_inclusive": 599,
   "frame_start": 0,
   "frames_logged": 600,
   "method_outputs": {
-    "dense": "8b19e35aab03da6dc3802456e26d39ca0ff189e37d29b5018f572cf80c208e13",
+    "dense": "fd0a9e47621ad0c4616bc18b9bad407af1f24af5fe8517cba04e009b39c9f5ae",
     "gmr": "01ce5cb60e5598f2cba6ed0b341c6ccbcdb622d7ce8849351058b9f360800fa7",
     "omniretarget": "41265d21d430868a4def0d15a5023e2a349f857e147a1babd4c5804f7243abfd",
-    "sparse-a": "d0af7979f356cd44c2da2aee78d368723c37cf5516b5ee393ffc62e507334946",
-    "sparse-b": "22fba20dcfe3290cdb630cc5fb3b508d24366d39f436a04b7d96c83e01bcb463",
-    "sparse-neutral": "ad8639973c266e27fc0205867714bf2b6f412c1f3ab6aac9c95ae7d003fe73f3"
+    "sparse-a": "54eaf21c816778a03d843f04b6b763e6a375f96a37441c9e56db55ba2fe9e78e",
+    "sparse-b": "25e1b437792f1c4b16f022360219f94308df282ba9917f945b212aac7f74c602",
+    "sparse-neutral": "4588008c36adc749c557d7f6a9850f0e66df02093e5bbde9a52a6e1bd5466a2f"
   },
   "methods": [
     "sparse-neutral",
@@ -21,9 +22,9 @@
     "sparse-b"
   ],
   "output": "artifacts/visualization/stage1_comparison.rrd",
-  "output_sha256": "11d79f760758de0ebd3d135e46924e1ed13da77bac2d6c5851f02bc6a753f907",
-  "output_size_bytes": 123336705,
-  "recording_id": "3fb71f3c-f7e1-fec6-1bb8-028564bc6aac",
+  "output_sha256": "da7bfa764beee79ae08153f13ef3e94bf5dc08b10f5f37eaa1591d3a784f00ca",
+  "output_size_bytes": 125218246,
+  "recording_id": "e6ab5e81-0252-0c02-e795-57d8bf853f57",
   "rendering": "articulated_g1_visual_meshes",
   "rerun_version": "0.34.1",
   "robot_instances_per_frame": 17,
@@ -65,7 +66,7 @@
     "external/holosoma/src/holosoma/holosoma/data/robots/g1/meshes/waist_roll_link_rev_1_0.STL": "b67c347a05abc3e8ddae600d98a082bee273bb39f8e651647708b0a7140a8a97",
     "external/holosoma/src/holosoma/holosoma/data/robots/g1/meshes/waist_yaw_link_rev_1_0.STL": "ec6db442b11f25eed898b5add07940c85d804f300de24dcbd264ccd8be7d554c"
   },
-  "schema_version": 2,
+  "schema_version": 3,
   "sequence_id": "dance1_subject1_f000000_000600",
   "source_sha256": "67e62e7e6e02cd54c8659fd1de9974032639e82948ebb86e2a8c82a060b7c6b5",
   "stride": 1
