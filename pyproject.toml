@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 evaluation = [
   "matplotlib>=3.7",
+  "mujoco>=3.2",
   "pandas>=2.0",
   "pyarrow>=12",
   "scipy>=1.10",
@@ -34,4 +35,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
-

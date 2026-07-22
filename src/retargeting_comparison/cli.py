@@ -31,6 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_method.add_argument("--sequence", required=True)
     evaluate = sub.add_parser("evaluate", help="evaluate one canonical run")
     evaluate.add_argument("--run", required=True)
+    evaluate.add_argument("--source")
+    evaluate.add_argument("--robot-xml")
+    evaluate.add_argument("--output-dir", default="metrics/runs")
     interaction = sub.add_parser("run-interaction", help="run an interaction ablation")
     interaction.add_argument("--case", choices=("box", "climb"), required=True)
     interaction.add_argument("--variant", choices=("full", "no-hard"), required=True)
@@ -71,6 +74,21 @@ def main(argv: list[str] | None = None) -> int:
             origin_frame_end=selected.frame_end,
             repo_root=root,
         )
+        return 0
+    if args.command == "evaluate":
+        from .evaluator import evaluate_motion, save_evaluation
+        from .robot_model import CanonicalRobotModel, default_robot_scene
+        from .schemas import CanonicalG1, CanonicalHuman
+
+        run_path = Path(args.run)
+        motion = CanonicalG1.load(run_path)
+        source_path = args.source or motion.metadata.get("canonical_source_path")
+        if not source_path:
+            raise SystemExit("--source is required when the run metadata has no canonical_source_path")
+        human = CanonicalHuman.load(source_path)
+        robot = CanonicalRobotModel(args.robot_xml or default_robot_scene())
+        table, summary = evaluate_motion(human, motion, robot)
+        save_evaluation(table, summary, args.output_dir, run_path.stem)
         return 0
     if args.command == "validate-stage1":
         print(FULL_LAFAN_STOP_MESSAGE)
