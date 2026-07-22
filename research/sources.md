@@ -5,8 +5,8 @@ Accessed: 2026-07-22
 Every Stage 0 classification below is anchored to an official paper, project page, repository, or documentation site.
 Issues and third-party summaries are not primary evidence.
 
-- [Controlled Sparse-IK](https://github.com/kevinzakka/mink) — frozen evidence: `benchmark v2`
-- [Controlled Dense-KeyBody IK](https://github.com/kevinzakka/mink) — frozen evidence: `benchmark v2`
+- [Controlled Sparse-IK](https://github.com/kevinzakka/mink) — frozen evidence: `benchmark v3`
+- [Controlled Dense-KeyBody IK](https://github.com/kevinzakka/mink) — frozen evidence: `benchmark v3`
 - [GMR](https://github.com/YanjieZe/GMR) — frozen evidence: `bb1bbe40774794fceb2a7c579a3464a28e68c844`
 - [OmniRetarget / Holosoma](https://github.com/amazon-far/holosoma) — frozen evidence: `5f48635a3624656a5f46a07df26d43187e59f855`
 - [ProtoMotions v3](https://github.com/NVlabs/ProtoMotions) — frozen evidence: `49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c`

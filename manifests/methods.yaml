@@ -1,7 +1,8 @@
-frozen_at_utc: '2026-07-22T16:43:57.348436+00:00'
+frozen_at_utc: '2026-07-22T17:02:43.907957+00:00'
 required:
 - name: sparse
   implementation: controlled Mink baseline
+  benchmark_revision: v3
   config: configs/controlled_mink.yaml
   seeds:
   - neutral
@@ -9,6 +10,7 @@ required:
   - B
 - name: dense
   implementation: controlled Mink baseline
+  benchmark_revision: v3
   config: configs/controlled_mink.yaml
   seeds:
   - neutral

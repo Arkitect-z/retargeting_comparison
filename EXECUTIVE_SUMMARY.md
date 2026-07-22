@@ -1,7 +1,9 @@
 # Executive Summary
 
-Stage 1 completed the four required operating points, synchronized Rerun visual inspection, and both Full/No-Hard interaction ablations on the frozen Pilot. The fastest observed operating point was `sparse-neutral` and the lowest RF-KPE-all was `omniretarget`; neither observation is a Full-LAFAN conclusion.
+Stage 1 completes the four required operating points, three Sparse seeds, evaluator-v2 scale correction, controlled-baseline v3 root anchoring, source-adapter audit, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. The fastest observed operating point is `sparse-neutral` and the lowest RF-KPE-all is `dense` on this one Pilot only.
 
-Decision: **GO WITH CHANGES**. The Stage 1 harness and evidence are usable, but the 1.5× serial Stage 2 runtime projection is 67.95 hours, above the 48-hour limit. Storage remains within 200 GB. Before Stage 2, use repeat timing only on a frozen subset and either optimize/parallelize OmniRetarget or define and rename a deterministic reduced-LAFAN experiment.
+The apparent lack of visual separation was primarily a measurement-presentation issue: all outputs share G1 morphology, root-frame pose plots remove global trajectory, and the old root reference used inconsistent scales. The corrected report separates common-scale fidelity, native solver tracking, and scale-invariant path shape, and decomposes artifacts by cause.
+
+Decision: **GO WITH CHANGES**. The 1.5× serial Stage 2 runtime projection is 68.04 hours versus the 48-hour limit; projected storage is 6.43 GB versus 200 GB. Stage 2 was not started.
 
 FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

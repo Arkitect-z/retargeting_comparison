@@ -1,5 +1,5 @@
 name,url,commit,status,license,role
-retargeting_comparison,https://github.com/Arkitect-z/retargeting_comparison.git,564c6ca4636ce8dc0583b9507ae42707ea700d17,dirty,Apache-2.0,original harness
+retargeting_comparison,https://github.com/Arkitect-z/retargeting_comparison.git,12789aead95f2723f9625d29107456a32bbb9d0e,dirty,Apache-2.0,original harness
 holosoma,https://github.com/amazon-far/holosoma.git,5f48635a3624656a5f46a07df26d43187e59f855,pinned with one recorded constraint-flag patch,Apache-2.0,required retargeter and canonical G1 model
 GMR,https://github.com/YanjieZe/GMR.git,bb1bbe40774794fceb2a7c579a3464a28e68c844,clean,MIT,required retargeter
 ProtoMotions v3,https://github.com/NVlabs/ProtoMotions.git,49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c,clean,Apache-2.0,conditional retargeter

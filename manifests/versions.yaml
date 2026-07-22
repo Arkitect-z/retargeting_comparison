@@ -1,5 +1,5 @@
-captured_at_utc: '2026-07-22T16:43:57.381401+00:00'
-harness_commit: 564c6ca4636ce8dc0583b9507ae42707ea700d17
+captured_at_utc: '2026-07-22T17:02:43.943019+00:00'
+harness_commit: 12789aead95f2723f9625d29107456a32bbb9d0e
 stage_config_sha256: 7921138d2e9e657bfbcb680ad4beadae3b57d4d54931bd856e82ceee39a4ba4e
 python: 3.10.19
 full_lafan_authorized: false

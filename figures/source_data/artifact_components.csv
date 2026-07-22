@@ -1,0 +1,5 @@
+label,foot_skating_frame_rate,ground_penetration_frame_rate,joint_limit_violation_frame_rate,invalid_frame_rate
+dense,0.3333333333333333,0.0,0.0,0.0
+gmr,0.065,0.0016666666666666668,0.0,0.0
+omniretarget,0.5316666666666666,0.0,0.0,0.0
+sparse-neutral,0.295,0.0,0.0,0.0
