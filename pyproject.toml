@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retargeting-comparison"
+version = "0.1.0"
+description = "Reproducible human-to-Unitree-G1 retargeting Pilot benchmark"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Arkitect-z"}]
+dependencies = [
+  "numpy>=1.24",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+evaluation = [
+  "matplotlib>=3.7",
+  "pandas>=2.0",
+  "pyarrow>=12",
+  "scipy>=1.10",
+]
+models = ["smplx>=0.1.28", "torch>=2.1"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1"]
+
+[project.scripts]
+rtcmp = "retargeting_comparison.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+

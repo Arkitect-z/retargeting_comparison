@@ -1,0 +1,43 @@
+# Licensed or upstream assets
+body_models/
+data/
+external/
+.external/
+
+# Generated experiment artifacts
+artifacts/
+canonical/
+source/canonical_human/*.npz
+source_adapters/
+runs/
+videos/
+logs/
+
+# Environments and caches
+.venv/
+.pixi/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Credentials and local overrides
+.env
+.env.*
+!.env.example
+*.local.yaml
+
+# Large model/data formats are opt-in, never staged accidentally
+*.bvh
+*.fbx
+*.pkl
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.zip
+
