@@ -2,11 +2,11 @@
 
 ## 1. Decision
 
-**GO WITH CHANGES** — required Stage 1 Pilot execution and validation are complete; Stage 2 needs a runtime-budget change and explicit approval.
+**NO-GO — revised Stage 1 work in progress.** The legacy four-core Pilot is complete, but ProtoMotions v2.3/v3 and the registered preprocessing/scale study are still mandatory.
 
 ## 2. Question
 
-How do sparse constraints, dense constraints, GMR, and OmniRetarget trade fidelity, artifacts, and speed on one frozen human-motion Pilot?
+How do information density, public retargeter design, and official preprocessing/scale policy trade fidelity, artifacts, and speed on one frozen human-motion Pilot?
 
 ## 3. Frozen source
 
@@ -24,7 +24,7 @@ GMR uses `0.875`; Holosoma uses `0.7471`; evaluator v2 freezes one neutral-geome
 
 ## 6. Public methods
 
-GMR and OmniRetarget run at frozen official commits in isolated subprocess environments with only I/O, provenance, and timing adapters.
+GMR and OmniRetarget have completed legacy runs. ProtoMotions v2.3/Mink and v3/modified-PyRoki are required by the revision and are not yet complete; PHC remains lineage-only because its fitting asset is not canonical G1-29.
 
 ## 7. RF-KPE and quality vs speed
 
@@ -58,6 +58,6 @@ The Rerun recording provides full articulated G1 meshes in side-by-side world, w
 
 ## 14. Stage 2 budget
 
-The 1.5× serial projection is 68.04 h and 6.43 GB. Discuss reduced-LAFAN or optimized/parallel execution before approval.
+The old four-core 1.5× serial projection is 68.04 h and is not the revised estimate. Recompute it after all revised Stage 1 runs; Stage 2 remains stopped.
 
 FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

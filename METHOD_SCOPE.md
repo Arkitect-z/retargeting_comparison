@@ -1,7 +1,9 @@
 # Method Scope
 
-The experimental core is controlled Sparse Mink, controlled Dense Mink, official GMR at `bb1bbe40774794fceb2a7c579a3464a28e68c844`, and official OmniRetarget/Holosoma at `5f48635a3624656a5f46a07df26d43187e59f855`. Sparse and Dense v3 share robot, uniform scale, rigid root anchor, solver, limits, warm start, iteration budget, damping, posture regularization, explicit weak temporal cost, and neutral initialization; only their declared target sets differ in the main operating-point comparison.
+The revised required set is controlled Sparse Mink, controlled Dense Mink, official GMR at `bb1bbe40774794fceb2a7c579a3464a28e68c844`, official OmniRetarget/Holosoma at `5f48635a3624656a5f46a07df26d43187e59f855`, ProtoMotions v2.3/Mink at `4a905b998101333a2fb91f2de8e2cab4bd0db68e`, and ProtoMotions v3/modified-PyRoki at `49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c`. Sparse and Dense share robot, scale, root anchor, solver, limits, initialization, and regularization; only the declared task set differs.
 
-ProtoMotions v3 and PHC are conditional candidates subject to the two-hour gate recorded in `metrics/conditional_candidates.csv`. SOMA Retargeter and cuRoboV2 remain lineage/input-compatibility evidence. Mink/PyRoki are backends; MaskedMimic/BeyondMimic are controllers or trackers; LocoMuJoCo is a benchmark; MIRROR is non-G1. Historical, scope, and experimental claims are separated in `research/claims.csv`.
+ProtoMotions v2.3 is labelled `PHC-derived preprocessing/FK infrastructure + sequential Mink`; it is not a PHC result. ProtoMotions v2/v3 form a native pipeline lineage pair, not a pure backend ablation. PHC is lineage and AMASS-policy evidence because its official fitting asset has 37 motors rather than canonical G1-29. Native official results and controlled preprocessing/scale ablations must be separate. SOMA/cuRobo remain conditional input-compatibility candidates; bare solvers, controllers, and benchmarks remain outside the retargeter scatter.
+
+The mandatory policy design is frozen in `research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md` and `configs/scale_policy_sensitivity.yaml`. The legacy four-core results remain valid evidence, but revised Stage 1 is incomplete.
 
 FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

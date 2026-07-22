@@ -648,10 +648,19 @@ def build_markdown(
     candidates = pd.read_csv(root / "metrics" / "conditional_candidates.csv")
     adapters = pd.read_csv(root / "metrics" / "source_adapter_errors.csv")
     seed_variance = pd.read_csv(root / "metrics" / "sparse_seed_variance.csv")
+    stage1_config = load_yaml(root / "configs" / "stage1.yaml")
+    revised_stage1_complete = (
+        stage1_config.get("completion_status") == "complete_revised_scope"
+    )
     outcome = (
-        "GO"
-        if projection_info["within_wall_budget"] and projection_info["within_storage_budget"]
-        else "GO WITH CHANGES"
+        (
+            "GO"
+            if projection_info["within_wall_budget"]
+            and projection_info["within_storage_budget"]
+            else "GO WITH CHANGES"
+        )
+        if revised_stage1_complete
+        else "NO-GO"
     )
     quality_table = operating[
         [
@@ -753,11 +762,16 @@ def build_markdown(
 
 ## Abstract
 
+**Revision status:** the legacy four-method execution below is complete, but
+the revised Stage 1 is not. ProtoMotions v2.3/v3, pre-solver policy capture,
+the controlled scale-policy transplant, and registered root/local sensitivity
+runs remain mandatory. The current decision is `NO-GO — work in progress`.
+
 This Stage 1 Pilot compares controlled Sparse and Dense Mink retargeting, official GMR, and official OmniRetarget/Holosoma on the source-only-selected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The original presentation made several methods look nearly identical because it mixed method-specific root scales with a method-dependent evaluator scale and used root-frame plots that intentionally remove global translation. Evaluator v2 fixes that confound without changing the sequence, methods, or thresholds: one neutral-G1/source landmark scale is frozen for all quality metrics, native scale policy and scale-invariant path shape are reported separately, and controlled baseline v3 uses that common scale, a geometry-derived rigid root anchor, and an explicit weak temporal cost.
 
 ## Frozen design and scope
 
-Stage 1 contains exactly one LAFAN Pilot, three Sparse seeds, four core operating points, and the two official box/climb interaction cases in Full and No-Hard form. It is not a Full-LAFAN ranking. The official public methods retain their native scaling policies; they are not silently rescaled or retuned. The evaluator uses the Holosoma G1 29-DoF model only as common robot geometry and joint order.
+The legacy evidence contains one LAFAN Pilot, three Sparse seeds, four completed operating points, and the two official box/climb interaction cases in Full and No-Hard form. Revised Stage 1 additionally requires ProtoMotions v2.3 and v3 plus the registered preprocessing/scale study. It is not a Full-LAFAN ranking. The official public methods retain their native scaling policies; they are not silently rescaled or retuned. The evaluator uses the Holosoma G1 29-DoF model only as common robot geometry and joint order.
 
 ## Main results
 
@@ -833,11 +847,11 @@ Distances are computed with MuJoCo geometry-surface queries over the actual coll
 
 Each core run uses one fresh cold process, one warm-up, and three measured warm repetitions with one CPU thread and no visualization. End-to-end and native-core values remain separate; initialization/JIT/import costs are excluded from steady-state RTF and retained in the raw records.
 
-## Conditional candidate gates
+## Legacy conditional candidate gates (superseded)
 
 {candidate_table}
 
-An `N/A` point is not a negative quality result. It means the public pipeline did not pass the same-source input, frozen environment, canonical 29-DoF output, and full-600-frame gates inside the bounded integration budget. No pre-retargeted sample or naked IK demo is substituted.
+These rows record the former gate and are retained for provenance. The revised design promotes ProtoMotions v3 to a required full run and replaces PHC's experimental slot with ProtoMotions v2.3/Mink. PHC's official fitting asset is excluded from the canonical plot because it is 37-motor, not G1-29. An `N/A` row is not a negative quality result and cannot satisfy the revised required run.
 
 ## Stage 2 gate
 
@@ -850,29 +864,29 @@ After the required 1.5× safety factor, the serial projection is {_fmt(projectio
         root / "EXECUTIVE_SUMMARY.md",
         f"""# Executive Summary
 
-Stage 1 completes the four required operating points, three Sparse seeds, evaluator-v2 scale correction, controlled-baseline v3 root anchoring, source-adapter audit, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. The fastest observed operating point is `{fastest}` and the lowest RF-KPE-all is `{best_quality}` on this one Pilot only.
+The legacy four-core execution completes four operating points, three Sparse seeds, evaluator-v2 scale correction, controlled-baseline v3 root anchoring, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. Revised Stage 1 remains incomplete pending ProtoMotions v2.3/v3, pre-solver policy capture, controlled scale-policy transplantation, and registered root/local sensitivity runs. The fastest observed legacy operating point is `{fastest}` and the lowest RF-KPE-all is `{best_quality}` on this one Pilot only.
 
 The apparent lack of visual separation was primarily a measurement-presentation issue: all outputs share G1 morphology, root-frame pose plots remove global trajectory, and the old root reference used inconsistent scales. The corrected report separates common-scale fidelity, native solver tracking, and scale-invariant path shape, and decomposes artifacts by cause.
 
-Decision: **{outcome}**. The 1.5× serial Stage 2 runtime projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours versus the 48-hour limit; projected storage is {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB versus 200 GB. Stage 2 was not started.
+Decision: **{outcome} — revised Stage 1 work in progress**. This completeness decision supersedes the legacy budget-only decision. The old four-core 1.5× serial Stage 2 runtime projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours and must be recomputed after the revised method set is complete. Stage 2 was not started.
 """,
     )
     _write_report(
         root / "GO_NO_GO.md",
-        f"""# Stage 1 Decision: {outcome}
+        f"""# Stage 1 Decision: {outcome} — Revised Scope Incomplete
 
-All four core methods complete 600/600 frames under the corrected protocol; evaluator and adapter checks pass; raw timing has one cold, one warm-up, and three measured repetitions; and both interaction cases complete in Full and No-Hard form. Conditional systems remain plotted only if their bounded gates pass; an N/A gate outcome is retained as evidence rather than replaced by pre-retargeted data.
+The legacy Sparse, Dense, GMR, and OmniRetarget runs complete 600/600 frames, and the interaction evidence is retained. They do not satisfy revised Stage 1 by themselves. ProtoMotions v2.3 and v3 must become full canonical operating points; PHC remains lineage-only because its official fitting asset is not canonical G1-29. Native preprocessing, controlled policy transplantation, and root/local ±5% sensitivity are mandatory.
 
-The change required before Stage 2 approval is budget-related: projected serial Full-LAFAN runtime with the frozen 1.5× factor is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours. Proposed order: drop failed/high-adapter-risk candidates, repeat timing only on a frozen subset, discard rebuildable intermediates, test sequence-parallel execution, and only then define an explicitly renamed deterministic reduced-LAFAN set if needed.
+The old projection is not the revised Stage 2 estimate. Recompute runtime and storage only after the expanded Stage 1 finishes; no Full-LAFAN execution is authorized.
 """,
     )
     _write_report(
         root / "METHOD_SCOPE.md",
         """# Method Scope
 
-The experimental core is controlled Sparse Mink, controlled Dense Mink, official GMR at `bb1bbe40774794fceb2a7c579a3464a28e68c844`, and official OmniRetarget/Holosoma at `5f48635a3624656a5f46a07df26d43187e59f855`. Sparse and Dense v3 share robot, uniform scale, rigid root anchor, solver, limits, warm start, iteration budget, damping, posture regularization, explicit weak temporal cost, and neutral initialization; only their declared target sets differ in the main operating-point comparison.
+The revised required set is controlled Sparse Mink, controlled Dense Mink, official GMR at `bb1bbe40774794fceb2a7c579a3464a28e68c844`, official OmniRetarget/Holosoma at `5f48635a3624656a5f46a07df26d43187e59f855`, ProtoMotions v2.3/Mink at `4a905b998101333a2fb91f2de8e2cab4bd0db68e`, and ProtoMotions v3/modified-PyRoki at `49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c`. Sparse and Dense v3 share robot, scale, anchor, solver, limits, warm start, iteration budget, damping, posture/temporal costs, and neutral initialization; only their task sets differ.
 
-ProtoMotions v3 and PHC are conditional candidates subject to the two-hour gate recorded in `metrics/conditional_candidates.csv`. SOMA Retargeter and cuRoboV2 remain lineage/input-compatibility evidence. Mink/PyRoki are backends; MaskedMimic/BeyondMimic are controllers or trackers; LocoMuJoCo is a benchmark; MIRROR is non-G1. Historical, scope, and experimental claims are separated in `research/claims.csv`.
+ProtoMotions v2.3 is labelled `PHC-derived preprocessing/FK infrastructure + sequential Mink`; it is not a PHC result. ProtoMotions v2/v3 are a native pipeline lineage pair, not a pure backend ablation. PHC is lineage/AMASS-policy evidence because its official fitting asset has 37 motors rather than canonical G1-29. Native official results and controlled preprocessing/scale ablations must remain separate. SOMA/cuRobo remain conditional input-compatibility candidates. Mink/PyRoki are backends; controllers and benchmarks remain outside the retargeter scatter.
 """,
     )
     _write_report(
@@ -905,10 +919,11 @@ The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from 
 
 1. Follow `docs/UPSTREAM_SETUP.md`, verify frozen commits, and place licensed assets outside Git as recorded in `manifests/`.
 2. Run `rtcmp audit`, `rtcmp prepare-source`, `rtcmp validate-models`, and `rtcmp freeze-evaluator` before any formal method.
-3. In the `robot` environment run `rtcmp audit-source-adapters`; then run `rtcmp gate-candidates`.
-4. Run `rtcmp run-method --method sparse --seed neutral --revision v3 --sequence manifests/pilot_sequence.yaml`; repeat with seeds A/B and run Dense with `--revision v3`. Run GMR and OmniRetarget at their frozen revisions.
-5. Run both variants of `rtcmp run-interaction` for box and climb.
-6. In conda env `vis`, run `rtcmp visualize-results`; then run `rtcmp build-report` and `rtcmp validate-stage1`.
+3. Freeze the preprocessing-policy manifest and pre-solver target contract from `research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md` and `configs/scale_policy_sensitivity.yaml`.
+4. Run the legacy Sparse/Dense/GMR/OmniRetarget commands, then the required ProtoMotions v2.3 and v3 (`target_raw_frames=600`) adapters and full Pilot runs.
+5. Capture every native pre-solver target; run the controlled policy transplant, registered root/local ±5% variants, contact-label diagnostics, and neutral-SMPL-X actor-shape target probe.
+6. Run both variants of `rtcmp run-interaction` for box and climb.
+7. In conda env `vis`, rebuild all articulated-G1 views; then run `rtcmp build-report` and `rtcmp validate-stage1`. Validation must remain `NO-GO` while any revised requirement is absent.
 
 Every run has an atomic status manifest and immutable output hash. Existing successful output is reused; a failed retry receives a new attempt directory. Raw datasets, body models, upstream history, trajectories, logs, and caches remain ignored.
 """,
@@ -917,11 +932,11 @@ Every run has an atomic status manifest and immutable output hash. Existing succ
 
 ## 1. Decision
 
-**{outcome}** — required Stage 1 Pilot execution and validation are complete; Stage 2 needs a runtime-budget change and explicit approval.
+**{outcome} — revised Stage 1 work in progress.** The legacy four-core Pilot is complete, but ProtoMotions v2.3/v3 and the registered preprocessing/scale study are still mandatory.
 
 ## 2. Question
 
-How do sparse constraints, dense constraints, GMR, and OmniRetarget trade fidelity, artifacts, and speed on one frozen human-motion Pilot?
+How do information density, public retargeter design, and official preprocessing/scale policy trade fidelity, artifacts, and speed on one frozen human-motion Pilot?
 
 ## 3. Frozen source
 
@@ -939,7 +954,7 @@ GMR uses `0.875`; Holosoma uses `0.7471`; evaluator v2 freezes one neutral-geome
 
 ## 6. Public methods
 
-GMR and OmniRetarget run at frozen official commits in isolated subprocess environments with only I/O, provenance, and timing adapters.
+GMR and OmniRetarget have completed legacy runs. ProtoMotions v2.3/Mink and v3/modified-PyRoki are required by the revision and are not yet complete; PHC remains lineage-only because its fitting asset is not canonical G1-29.
 
 ## 7. RF-KPE and quality vs speed
 
@@ -973,7 +988,7 @@ The Rerun recording provides full articulated G1 meshes in side-by-side world, w
 
 ## 14. Stage 2 budget
 
-The 1.5× serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB. Discuss reduced-LAFAN or optimized/parallel execution before approval.
+The old four-core 1.5× serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and is not the revised estimate. Recompute it after all revised Stage 1 runs; Stage 2 remains stopped.
 """
     _write_report(root / "PRESENTATION.md", slides)
 
@@ -1005,7 +1020,7 @@ def publish_manifests(root: Path) -> None:
 
 def artifact_manifest(root: Path) -> None:
     candidates = []
-    for folder in ("metrics", "figures", "manifests", "docs"):
+    for folder in ("metrics", "figures", "manifests", "docs", "research", "configs"):
         candidates.extend(path for path in (root / folder).rglob("*") if path.is_file())
     candidates.extend(root / report for report in REPORTS)
     interactive_report = root / "INTERACTIVE_REPORT.html"

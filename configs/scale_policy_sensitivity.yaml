@@ -1,0 +1,134 @@
+schema_version: 1
+experiment_id: stage1_scale_policy_sensitivity_v1
+status: planned_required
+full_lafan_authorized: false
+amass_motion_runs_authorized: false
+source_manifest: manifests/pilot_sequence.yaml
+policy_audit: research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md
+
+required_public_methods:
+  - gmr
+  - omniretarget
+  - protomotions_v2_3
+  - protomotions_v3
+
+pre_solver_target_contract:
+  required: true
+  fields:
+    - timestamps
+    - root_translation
+    - root_heading
+    - landmark_names
+    - world_positions
+    - root_relative_positions
+    - orientations_if_used
+    - contact_labels
+    - body_model_policy
+    - human_height_definition
+    - root_scale_policy
+    - local_scale_policy
+    - root_anchor_policy
+    - ground_policy
+    - robot_asset_sha256
+    - joint_order_sha256
+    - joint_limit_sha256
+    - constraint_graph_sha256
+
+common_policy:
+  definition: root_relative_weighted_least_squares_similarity_over_shared_semantic_landmarks
+  head_to_toe_span_role: diagnostic_only
+  root_path_scale_independent: true
+  root_anchor_independent: true
+  registration_must_precede_formal_runs: true
+
+within_method_variants:
+  - id: native
+    root_multiplier: 1.0
+    local_multiplier: 1.0
+  - id: root_minus_5
+    root_multiplier: 0.95
+    local_multiplier: 1.0
+  - id: root_plus_5
+    root_multiplier: 1.05
+    local_multiplier: 1.0
+  - id: local_minus_5
+    root_multiplier: 1.0
+    local_multiplier: 0.95
+  - id: local_plus_5
+    root_multiplier: 1.0
+    local_multiplier: 1.05
+within_method_protocol:
+  root_origin: first_frame
+  apply_before_solver: true
+  posthoc_qpos_rescale_forbidden: true
+  preserve_native_region_and_axis_structure: true
+
+controlled_policy_transplant:
+  solver: controlled_dense_mink
+  canonical_robot: holosoma_g1_29dof
+  fixed:
+    - source_timestamps
+    - task_set
+    - weights
+    - joint_limits
+    - iteration_budget
+    - initialization
+    - root_anchor
+    - contact_labels
+  policies:
+    - common_registered_similarity
+    - holosoma_lafan_uniform
+    - gmr_region_wise
+    - protomotions_v2_3_world_axis
+    - protomotions_v3_lower_upper_axis
+  label: controlled_policy_ablation
+  official_method_label_forbidden: true
+
+contact_protocol:
+  pure_scale_arm: fixed_canonical_labels
+  record_native_recomputation:
+    - label_flip_rate
+    - constraint_edge_flip_rate
+  recomputed_contact_run_required_when_conclusion_changes: true
+
+actor_shape_probe:
+  body_model: neutral_smplx
+  consumes_amass_motion: false
+  beta_profiles:
+    - short
+    - zero
+    - tall
+  frozen_pose_and_root_path: true
+  outputs:
+    - method_height
+    - target_spans
+    - root_gain
+    - local_gain
+    - contact_label_changes
+    - target_sha256
+
+required_metrics:
+  - pre_solver_target_geometry
+  - rf_kpe_targeted
+  - rf_kpe_untracked
+  - root_error_common_native_scale_invariant
+  - task_residual
+  - reach_infeasible_frame_rate
+  - temporal_metrics
+  - artifact_components
+  - contact_and_constraint_flip_rate
+  - completion
+  - qpos_and_fk_divergence_from_native
+  - end_to_end_and_native_core_timing
+  - finite_difference_sensitivity
+  - rank_stability
+
+acceptance:
+  full_pilot_frames_per_variant: 600
+  minimum_completion_ratio: 0.95
+  all_required_variants_mandatory: true
+  native_and_controlled_separated: true
+  raw_metrics_and_source_data_required: true
+  validator_missing_requirement_decision: NO-GO
+
+hard_stop_message: FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

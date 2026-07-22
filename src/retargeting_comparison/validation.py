@@ -348,6 +348,19 @@ def _stage0_evidence_check(root: Path) -> bool:
     }
     if not required_columns.issubset(matrix.columns) or len(matrix) < 15:
         return False
+    indexed = matrix.set_index("name")
+    if not {
+        "ProtoMotions v2.3",
+        "ProtoMotions v3",
+        "PHC retargeter",
+    }.issubset(indexed.index):
+        return False
+    if not (
+        str(indexed.loc["ProtoMotions v2.3", "stage1_role"]) == "required"
+        and str(indexed.loc["ProtoMotions v3", "stage1_role"]) == "required"
+        and str(indexed.loc["PHC retargeter", "g1_29dof_supported"]) == "no"
+    ):
+        return False
     claims = pd.read_csv(claims_path)
     if len(claims) < 8 or not {"historical", "experimental", "scope"}.issubset(
         set(claims.claim_type.astype(str))
@@ -419,6 +432,55 @@ def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
     checks["scientific_evidence_complete"] = _scientific_evidence_check(root)
     checks["timing_protocol_complete"] = _timing_protocol_check(root)
     checks["stage0_evidence_complete"] = _stage0_evidence_check(root)
+    policy_audit = root / "research" / "OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md"
+    checks["official_preprocessing_policy_audit"] = bool(
+        policy_audit.is_file()
+        and policy_audit.read_text().rstrip().endswith(FULL_LAFAN_STOP_MESSAGE)
+    )
+    sensitivity_config_path = root / "configs" / "scale_policy_sensitivity.yaml"
+    sensitivity_config = (
+        load_yaml(sensitivity_config_path) if sensitivity_config_path.is_file() else {}
+    )
+    registered_variants = sensitivity_config.get("within_method_variants", [])
+    checks["scale_sensitivity_protocol_frozen"] = bool(
+        sensitivity_config.get("full_lafan_authorized") is False
+        and sensitivity_config.get("amass_motion_runs_authorized") is False
+        and len(registered_variants) == 5
+        and sensitivity_config.get("acceptance", {}).get(
+            "all_required_variants_mandatory"
+        )
+        is True
+    )
+    for method, directory in (
+        ("protomotions_v2_3", "protomotions-v2-3"),
+        ("protomotions_v3", "protomotions-v3"),
+    ):
+        path = (
+            root
+            / "runs"
+            / str(sequence["sequence_id"])
+            / directory
+            / "canonical_g1.npz"
+        )
+        try:
+            motion = CanonicalG1.load(path)
+            motion.validate(source_frame_count=int(sequence["num_frames"]))
+            checks[f"revised_required_{method}"] = _core_motion_check(
+                motion, int(sequence["num_frames"])
+            )
+        except Exception:
+            checks[f"revised_required_{method}"] = False
+    revised_artifacts = {
+        "pre_solver_target_manifest": root / "manifests" / "pre_solver_targets.csv",
+        "scale_policy_sensitivity_results": root
+        / "metrics"
+        / "scale_policy_sensitivity_summary.csv",
+        "actor_shape_target_probe": root / "metrics" / "actor_shape_target_probe.csv",
+        "contact_constraint_flip": root / "metrics" / "contact_constraint_flip.csv",
+        "method_rank_stability": root / "metrics" / "method_rank_stability.csv",
+    }
+    for name, path in revised_artifacts.items():
+        checks[name] = path.is_file() and path.stat().st_size > 0
     checks["artifact_hashes_valid"] = _artifact_hashes_check(root)
     checks["rerun_visualization_complete"] = _rerun_visualization_check(
         root, sequence["sequence_id"]
@@ -471,20 +533,12 @@ def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
     checks["artifact_manifest_present"] = artifact_path.is_file()
     projection_path = root / "metrics" / "stage2_projection.json"
     projection = json.loads(projection_path.read_text()) if projection_path.is_file() else {}
-    core_complete = all(checks[f"core_{label}"] for label in CORE_LABELS)
-    interaction_complete = all(
-        checks[f"interaction_{case}_{variant}"]
-        for case in ("box", "climb")
-        for variant in ("full", "no-hard")
-    )
-    reports_complete = all(checks[f"report_{report}"] for report in REPORTS)
-    if (
-        all(checks.values())
-        and projection.get("within_wall_budget")
-        and projection.get("within_storage_budget")
+    mandatory_complete = all(checks.values())
+    if mandatory_complete and projection.get("within_wall_budget") and projection.get(
+        "within_storage_budget"
     ):
         decision = "GO"
-    elif core_complete and interaction_complete and reports_complete:
+    elif mandatory_complete:
         decision = "GO WITH CHANGES"
     else:
         decision = "NO-GO"

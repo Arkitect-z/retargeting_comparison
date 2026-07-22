@@ -1,4 +1,4 @@
-frozen_at_utc: '2026-07-22T17:02:43.907957+00:00'
+frozen_at_utc: '2026-07-22T18:22:13.124834+00:00'
 required:
 - name: sparse
   implementation: controlled Mink baseline
@@ -26,10 +26,39 @@ required:
   license: Apache-2.0
   native_environment: hsretargeting
   patch: patches/holosoma/interaction-hard-constraint-flags.patch
+- name: protomotions_v2_3
+  repository: https://github.com/NVlabs/ProtoMotions.git
+  tag: v2.3
+  commit: 4a905b998101333a2fb91f2de8e2cab4bd0db68e
+  implementation: PHC-derived preprocessing/FK plus sequential Mink
+  native_environment: to_be_frozen
+  required_gates:
+  - 165d_smplx_input_contract
+  - smplsim_and_mink_dependency_lock
+  - canonical_g1_fk_limits_geometry_audit
+  - 600_frame_canonical_output
+- name: protomotions_v3
+  repository: https://github.com/NVlabs/ProtoMotions.git
+  commit: 49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c
+  implementation: whole-trajectory modified PyRoki/JAXLS
+  native_environment: to_be_frozen
+  required_arguments:
+    target_raw_frames: 600
+  required_gates:
+  - canonical_g1_fk_and_joint_limit_audit
+  - 600_frame_canonical_output
+required_experiments:
+- native_pipeline_comparison
+- controlled_scale_policy_transplant
+- within_method_root_local_scale_response
+- neutral_smplx_actor_shape_target_probe
+scale_policy_sensitivity_config: configs/scale_policy_sensitivity.yaml
+lineage_only:
+  phc: official public G1 fitting asset is 37-motor and not canonical G1-29
 conditional_order:
-- protomotions_v3
-- phc
+- soma_or_curobo
 conditional_per_method_limit_s: 7200
-conditional_total_limit_s: 14400
+conditional_total_limit_s: 7200
+stage1_completion_status: incomplete_revised_scope
 full_lafan_authorized: false
 hard_stop_message: FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

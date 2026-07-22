@@ -7,9 +7,9 @@ dependency; they do not imply identical evaluation conditions.
 ```mermaid
 flowchart LR
   Mink[Mink backend] --> GMR[GMR]
-  Mink --> PM2[ProtoMotions v2 retargeting]
+  Mink --> PM2[ProtoMotions v2.3 retargeting]
   PyRoki[PyRoki backend] --> PM3[ProtoMotions v3 retargeting]
-  PHC[PHC SMPL fitting] --> PM2
+  PHC[PHC-derived preprocessing / FK] --> PM2
   SOCP[Sequential SOCP] --> Omni[OmniRetarget / Holosoma]
   Sparse[Sparse task tracking] --> Dense[Dense body preservation]
   Dense --> Interaction[Interaction preservation]

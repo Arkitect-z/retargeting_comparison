@@ -1,5 +1,8 @@
 stage: 1
+revision: preprocessing_scale_sensitivity_v1
+completion_status: incomplete_revised_scope
 full_lafan_authorized: false
+amass_motion_runs_authorized: false
 pilot_target_duration_s: 20.0
 pilot_duration_range_s: [10.0, 30.0]
 source_position_scale: 0.01
@@ -18,10 +21,24 @@ timing:
   warmup_runs: 1
   measured_warm_runs: 3
   randomization_seed: 20260722
+required_public_methods:
+  - gmr
+  - omniretarget
+  - protomotions_v2_3
+  - protomotions_v3
+required_experiments:
+  - native_pipeline_comparison
+  - controlled_scale_policy_transplant
+  - within_method_root_local_scale_response
+  - neutral_smplx_actor_shape_target_probe
+scale_policy_sensitivity_config: configs/scale_policy_sensitivity.yaml
 conditional_candidates:
-  order: [protomotions_v3, phc]
+  order: [soma_or_curobo]
   per_method_limit_s: 7200
-  total_limit_s: 14400
+  total_limit_s: 7200
+lineage_only:
+  phc:
+    reason: official public G1 fitting asset is 37-motor and not canonical G1-29
 stage2_budget:
   wall_time_hours: 48
   storage_gb: 200

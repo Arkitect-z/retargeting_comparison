@@ -2,11 +2,17 @@
 
 ## Abstract
 
+**Revision status:** the legacy four-method execution below is complete, but
+the revised Stage 1 is not. ProtoMotions v2.3/v3, pre-solver policy capture,
+the controlled scale-policy transplant, and registered root/local sensitivity
+runs remain mandatory. Current decision: `NO-GO — revised Stage 1 work in
+progress`.
+
 This Stage 1 Pilot compares controlled Sparse and Dense Mink retargeting, official GMR, and official OmniRetarget/Holosoma on the source-only-selected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The original presentation made several methods look nearly identical because it mixed method-specific root scales with a method-dependent evaluator scale and used root-frame plots that intentionally remove global translation. Evaluator v2 fixes that confound without changing the sequence, methods, or thresholds: one neutral-G1/source landmark scale is frozen for all quality metrics, native scale policy and scale-invariant path shape are reported separately, and controlled baseline v3 uses that common scale, a geometry-derived rigid root anchor, and an explicit weak temporal cost.
 
 ## Frozen design and scope
 
-Stage 1 contains exactly one LAFAN Pilot, three Sparse seeds, four core operating points, and the two official box/climb interaction cases in Full and No-Hard form. It is not a Full-LAFAN ranking. The official public methods retain their native scaling policies; they are not silently rescaled or retuned. The evaluator uses the Holosoma G1 29-DoF model only as common robot geometry and joint order.
+The legacy evidence contains one LAFAN Pilot, three Sparse seeds, four completed operating points, and the two official box/climb interaction cases in Full and No-Hard form. Revised Stage 1 additionally requires ProtoMotions v2.3 and v3 plus the registered preprocessing/scale study. It is not a Full-LAFAN ranking. The official public methods retain their native scaling policies; they are not silently rescaled or retuned. The evaluator uses the Holosoma G1 29-DoF model only as common robot geometry and joint order.
 
 ## Main results
 
@@ -126,14 +132,14 @@ Distances are computed with MuJoCo geometry-surface queries over the actual coll
 
 Each core run uses one fresh cold process, one warm-up, and three measured warm repetitions with one CPU thread and no visualization. End-to-end and native-core values remain separate; initialization/JIT/import costs are excluded from steady-state RTF and retained in the raw records.
 
-## Conditional candidate gates
+## Legacy conditional candidate gates (superseded)
 
 | candidate       | status   | input_ready   | environment_ready   | canonical_output_ready   |   elapsed_s | outcome                                                                     | reason                                                                                                |
 |:----------------|:---------|:--------------|:--------------------|:-------------------------|------------:|:----------------------------------------------------------------------------|:------------------------------------------------------------------------------------------------------|
 | ProtoMotions v3 | na       | True          | False               | False                    |        0.01 | N/A — public human→G1 pipeline not integration-ready under the Pilot budget | missing: frozen runnable environment; complete canonical 600-frame output                             |
-| PHC             | na       | False         | False               | False                    |        0.00 | N/A — public human→G1 pipeline not integration-ready under the Pilot budget | missing: same-source native adapter; frozen runnable environment; complete canonical 600-frame output |
+| PHC             | na       | False         | False               | False                    |        0.00 | N/A — official public G1 fitting asset is not the canonical 29-DoF embodiment | noncanonical asset; not a revised Stage 1 experimental point |
 
-An `N/A` point is not a negative quality result. It means the public pipeline did not pass the same-source input, frozen environment, canonical 29-DoF output, and full-600-frame gates inside the bounded integration budget. No pre-retargeted sample or naked IK demo is substituted.
+These rows record the former gate and are retained for provenance. The revised design promotes ProtoMotions v3 to a required full run and replaces PHC's experimental slot with ProtoMotions v2.3/Mink. PHC's official fitting asset is now excluded from the canonical plot because it is 37-motor, not G1-29. An `N/A` row is not a negative quality result and cannot satisfy the revised required run.
 
 ## Stage 2 gate
 

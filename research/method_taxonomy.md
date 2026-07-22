@@ -9,9 +9,9 @@ Solvers, controllers, trackers, datasets, and benchmarks are retained as lineage
 | Controlled Dense-KeyBody IK | controlled_baseline | required | required; completed |
 | GMR | retargeter | required | required; completed |
 | OmniRetarget / Holosoma | retargeter | required | required; completed |
-| ProtoMotions v3 | retargeter_and_framework | conditional_1 | reported by bounded gate when not integration-ready |
-| PHC retargeter | retargeter_component | conditional_2 | reported by bounded gate when LAFAN-to-SMPL adapter/environment is not ready |
-| ProtoMotions v2 | historical_retargeter | lineage_only | no stable historical ref frozen within Pilot |
+| ProtoMotions v3 | retargeter_and_framework | required | 600-frame canonical output and frozen environment still required |
+| PHC retargeter | retargeter_component | lineage_noncanonical_asset | official public fitting asset is not the canonical 29-DoF embodiment |
+| ProtoMotions v2.3 | historical_retargeter | required | floating SMPLSim/Mink dependencies and canonical asset compatibility must be frozen |
 | SOMA Retargeter | retargeter | lineage_input_incompatible | no verified lossless LAFAN-to-SOMA adapter |
 | cuRoboV2 MotionRetargeter | retargeter | lineage_input_incompatible | no verified lossless LAFAN-to-SOMA adapter |
 | PhySINK / PHUMA | physics_aware_retargeting | literature_only | no frozen public end-to-end Pilot pipeline verified |

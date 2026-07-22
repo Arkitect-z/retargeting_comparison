@@ -6,6 +6,11 @@ Interaction,Physics control,adds dynamics
 Mink,Sparse tasks,backend
 Mink,Dense body,GMR / controlled
 PyRoki,Dense body,ProtoMotions v3
+PHC preprocessing,ProtoMotions v2.3,derived infrastructure
+Mink,ProtoMotions v2.3,sequential backend
+PyRoki,ProtoMotions v3,trajectory backend
+ProtoMotions v2.3,Dense body,official pipeline
+ProtoMotions v3,Dense body,official pipeline
 Sequential SOCP,Interaction,OmniRetarget
 Sparse tasks,G1 reference,outputs
 Dense body,G1 reference,outputs

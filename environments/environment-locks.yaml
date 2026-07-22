@@ -48,6 +48,17 @@ environments:
       rerun-sdk: 0.34.1
       trimesh: 4.12.2
       yourdfpy: 0.0.60
+required_environment_locks_pending:
+  protomotions_v2_3:
+    revision: 4a905b998101333a2fb91f2de8e2cab4bd0db68e
+    must_pin: [python, smplsim_commit, mink_version, mujoco, quadprog, torch, smplx]
+    status: not_yet_reproducible
+  protomotions_v3:
+    revision: 49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c
+    must_pin: [python, jax, jaxlib, jaxls, pyroki_commit, mujoco, torch]
+    required_argument:
+      target_raw_frames: 600
+    status: not_yet_reproducible
 notes:
   - Upstream checkouts are imported by absolute frozen paths in fresh subprocesses.
   - RTCMP_CAPTURE_PYTHON, RTCMP_ROBOT_PYTHON, and RTCMP_HSRETARGETING_PYTHON override executable discovery.

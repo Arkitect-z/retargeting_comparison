@@ -11,7 +11,7 @@ Issues and third-party summaries are not primary evidence.
 - [OmniRetarget / Holosoma](https://github.com/amazon-far/holosoma) — frozen evidence: `5f48635a3624656a5f46a07df26d43187e59f855`
 - [ProtoMotions v3](https://github.com/NVlabs/ProtoMotions) — frozen evidence: `49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c`
 - [PHC retargeter](https://github.com/ZhengyiLuo/PHC) — frozen evidence: `846988d433ce1f341e85ac6fbd2cd51911bb3341`
-- [ProtoMotions v2](https://github.com/NVlabs/ProtoMotions) — frozen evidence: `historical ref not frozen`
+- [ProtoMotions v2.3](https://github.com/NVlabs/ProtoMotions/tree/v2.3) — frozen evidence: `4a905b998101333a2fb91f2de8e2cab4bd0db68e`
 - [SOMA Retargeter](https://github.com/NVIDIA/soma-retargeter) — frozen evidence: `accessed 2026-07-22`
 - [cuRoboV2 MotionRetargeter](https://nvlabs.github.io/curobo/latest/getting-started/humanoid_retargeting.html) — frozen evidence: `accessed 2026-07-22`
 - [PhySINK / PHUMA](https://davian-robotics.github.io/PHUMA/) — frozen evidence: `paper/project evidence`

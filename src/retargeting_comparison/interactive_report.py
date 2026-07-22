@@ -148,7 +148,7 @@ def collect_interactive_data(repo_root: str | Path = ".") -> dict[str, Any]:
 
     return {
         "schema_version": 2,
-        "title": "Human-to-G1 Retargeting — Stage 1 Pilot",
+        "title": "Human-to-G1 Retargeting — Revised Stage 1 (Work in Progress)",
         "decision": _json(root / "manifests" / "stage1_validation.json")["decision"],
         "hard_stop_message": FULL_LAFAN_STOP_MESSAGE,
         "operating_points": list(OPERATING_POINTS),
@@ -187,6 +187,8 @@ def collect_interactive_data(repo_root: str | Path = ".") -> dict[str, Any]:
             "reproduce": "REPRODUCE_PILOT.md",
             "rerun_guide": "docs/RERUN_VISUALIZATION.md",
             "completion_audit": "docs/STAGE1_COMPLETION_AUDIT.md",
+            "preprocessing_audit": "research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md",
+            "scale_sensitivity_config": "configs/scale_policy_sensitivity.yaml",
             "rerun_manifest": "manifests/rerun_visualization.json",
             "artifacts": "manifests/artifacts.csv",
             "core_csv": "metrics/core_summary.csv",

@@ -159,7 +159,7 @@
     const stats = [
       [DATA.pilot.num_frames, "frames", "frozen source"],
       [format(DATA.pilot.duration_s, 2), "seconds", "at 30 fps"],
-      [DATA.core.length, "operating points", "all complete"],
+      [DATA.core.length, "legacy operating points", "revised scope incomplete"],
       [new Set(DATA.interaction.map((row) => row.case)).size, "interaction cases", "Full + No-Hard"],
       [`${checks.filter(Boolean).length}/${checks.length}`, "acceptance checks", "all passed"],
     ];

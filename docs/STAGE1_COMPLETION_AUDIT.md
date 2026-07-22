@@ -2,76 +2,72 @@
 
 ## Decision
 
-The frozen Pilot execution is complete. The decision is **GO WITH CHANGES**:
-the measured 1.5× serial Full-LAFAN projection is `68.04 h`, above the frozen
-`48 h` Stage 2 gate. Projected retained storage is `6.43 GB`, below the `200 GB`
-gate. No Full-LAFAN job was started.
+**NO-GO — revised Stage 1 work in progress.** The legacy four-core Pilot is
+complete, but the accepted scope now also requires ProtoMotions v2.3/Mink,
+ProtoMotions v3/modified-PyRoki, an official preprocessing-policy audit,
+hashed pre-solver targets, controlled scale-policy transplantation, and
+within-method root/local scale sensitivity.
 
-## Required experimental evidence
+This is a completeness decision, not evidence that a method failed. No
+Full-LAFAN or AMASS dataset run was started.
 
-| Plan requirement | Evidence | Status |
+## Evidence status
+
+| Revised requirement | Evidence | Status |
 |---|---|---|
 | Deterministic source-only Pilot selection | `pilot_sequence.yaml`, source-selection CSV, selector regression | Complete |
-| One canonical source and audited native adapters | GMR/Holosoma adapter errors and hashed ignored native inputs | Complete |
-| SMPL chumpy-free and neutral SMPL-X validation | finite zero-pose forwards and SHA-256 manifest | Complete |
-| Method-independent scale and heading | evaluator-v2 manifest, neutral-G1 geometry scale, geometry heading | Complete |
-| Controlled Sparse neutral/A/B v3 | 600/600 canonical frames for all three seeds | Complete |
-| Controlled Dense v3 | 600/600 canonical frames | Complete |
+| Licensed body-model validation | chumpy-free SMPL and neutral SMPL-X finite forwards and hashes | Complete |
+| Controlled Sparse neutral/A/B | 600/600 canonical frames | Complete |
+| Controlled Dense | 600/600 canonical frames | Complete |
 | Official GMR | 600/600 canonical frames at frozen commit | Complete |
 | Official OmniRetarget/Holosoma | 600/600 canonical frames at frozen commit | Complete |
-| Four-method smoke tests | two-frame canonical outputs; controlled smoke uses v3 | Complete |
-| Unified evaluator | targeted, untracked, root-scale, temporal, artifact and completion metrics | Complete |
-| Timing protocol | one cold process, one warm-up, three measured warm runs | Complete |
-| Interaction case study | box/climb × Full/No-Hard with geometry-surface distances | Complete |
-| Conditional gates | ProtoMotions v3 and PHC have explicit bounded N/A evidence | Complete |
-| Synchronized visual inspection | 600-frame Rerun recording with all 35 articulated G1 meshes | Complete |
-| Reports and presentation | eight required English Markdown reports; 14 presentation sections | Complete |
-| Stage 1 validator | all acceptance checks recorded in `stage1_validation.json` | Complete |
+| Legacy evaluator/timing/artifact evidence | disaggregated metrics and raw timing | Complete |
+| Interaction case study | box/climb × Full/No-Hard | Complete |
+| Articulated G1 Rerun visualization | synchronized 600-frame legacy recording | Complete |
+| GMR/Holosoma/Proto v2/v3/PHC AMASS policy audit | `research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md` | Complete as code audit |
+| ProtoMotions v2.3 dependency and input gates | stable tag found; floating dependencies and 165-D contract identified | Pending implementation |
+| ProtoMotions v2.3 canonical Pilot | no accepted 600-frame output yet | Missing |
+| ProtoMotions v3 canonical Pilot | same-source keypoints exist; no accepted 600-frame output/environment yet | Missing |
+| PHC treatment | official fitting asset identified as 37-motor/noncanonical | Complete as exclusion evidence |
+| Hashed pre-solver targets for every public method | schema designed, packages not captured | Missing |
+| Controlled scale-policy transplant | registered in `configs/scale_policy_sensitivity.yaml` | Missing results |
+| Root/local ±5% within-method response | five variants registered | Missing results |
+| Neutral-SMPL-X actor-shape target probe | short/zero/tall design registered | Missing results |
+| Fixed-contact/constraint-flip evidence | protocol registered | Missing results |
+| Revised interactive visualization/report | must include v2/v3 and active scale policy | Missing |
+| Revised Stage 1 validator | must fail on every missing mandatory item | Pending implementation |
+| Revised Stage 2 projection | legacy projection excludes new methods/variants | Invalid until rerun |
 
-## Scale correction audit
+## What the legacy scale correction did and did not prove
 
-The same source file and G1 model did not guarantee the same source-to-robot
-scale. Frozen GMR declares `0.875`; Holosoma declares `1.27/1.7 = 0.7470588`;
-the earlier evaluator also inferred height from each method's first output pose.
-Evaluator v2 instead freezes one method-independent scale (`0.742037044`) from
-neutral G1 and the selected source. Controlled v3 uses that scale plus one
-geometry-derived rigid root anchor so G1 is not placed below the ground merely
-because its pelvis-to-foot proportion differs from the human skeleton.
+Evaluator v2 correctly separated common-scale root error, native-policy root
+error, and scale-invariant path-shape error. It also explained why RF-KPE can
+cluster after removing root translation and heading. This repaired a metric
+confound in the existing outputs.
 
-Primary root evidence now reports common-scale error, native-policy error and
-scale-invariant path-shape error separately. RF-KPE uses the common scale and
-removes root translation and heading by definition.
+It did not rerun any retargeter under a changed pre-solver scale policy.
+Therefore it is not the newly required scale-sensitivity experiment. The
+revised experiment changes root displacement and root-relative target geometry
+before solving and retains native/controlled results as separate evidence.
 
-## Automated regression coverage
+## Method-set correction
 
-The `capture` suite passes 35 tests. It covers BVH parsing and deterministic
-selection, body-model finite forwards, rotation conventions, schemas and
-completion, controlled configuration equality, deterministic seeds and root
-anchoring, canonical MuJoCo versus visualization-URDF FK, synthetic fidelity,
-temporal and artifact metrics, source adapters, Holosoma constraint flags,
-surface distances, timing/run manifests, interactive-report determinism and
-delivery contracts. Rerun 0.34.1 independently verifies the complete `.rrd`.
-
-## Deliberate non-requirements and limits
-
-- ProtoMotions v3 has a same-source 600-frame keypoint package, but no frozen
-  dedicated JAX/PyRoki environment or complete canonical output. PHC also lacks
-  a lossless LAFAN-to-SMPL parameter adapter. Both remain N/A under the bounded
-  integration gate; neither is assigned a quality score.
-- Sparse+Orientation and independent-frame Sparse were optional diagnostics
-  and were not promoted into the primary comparison.
-- Self-collision remains diagnostic-only because no common validated pair set
-  was frozen.
-- This is one preselected 20-second LAFAN sequence plus two interaction cases.
-  It is complete as a Stage 1 Pilot, not as a dataset-level ranking.
-- Controller rollout, dynamic stability, torque and hardware execution are
-  outside this kinematic-retargeting Pilot.
+- ProtoMotions v2.3 is an official G1-29 sequential Mink retargeter. It uses
+  PHC-derived preprocessing/FK infrastructure but is not a PHC algorithm result.
+- ProtoMotions v3 is the required whole-trajectory modified-PyRoki point. Its
+  600-frame CLI setting and tighter joint limits must be frozen explicitly.
+- PHC remains lineage and AMASS-policy evidence. Its documented public G1
+  fitting asset has 37 motors and cannot enter the canonical G1-29 main plot
+  unchanged.
+- The v2/v3 pair is not a pure backend ablation because preprocessing,
+  representation, scale, contacts, grounding, costs, temporal scope, and limits
+  all change.
 
 ## Stage 2 preparation
 
-Before approval, either measure sequence-level parallel execution/optimization
-for OmniRetarget, or explicitly define and rename a deterministic reduced-LAFAN
-design. Any Stage 2 design must retain the frozen source rules, evaluator,
-method commits, thresholds and 1.5× projection safety factor.
+The previous 68.04-hour/6.43-GB projection covered only the legacy method set.
+After revised Stage 1, recompute runtime and storage with the frozen 1.5× safety
+factor. Full-LAFAN still requires a separate user decision and must satisfy the
+48-hour/200-GB gate or use an explicitly discussed deterministic simplification.
 
 FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

@@ -4,6 +4,11 @@ Reproducible Stage 0–1 research harness for comparing public human-motion to
 Unitree G1 29-DoF retargeting systems on one frozen LAFAN1 Pilot sequence and
 two official OmniRetarget interaction cases.
 
+The legacy Sparse/Dense/GMR/OmniRetarget execution is complete. The revised
+Stage 1 is intentionally marked **NO-GO / work in progress** until
+ProtoMotions v2.3 and v3, pre-solver policy capture, and the registered
+scale/preprocessing sensitivity study are complete.
+
 The repository contains original orchestration, adapters, evaluation code,
 tests, small metrics, figures, and English Markdown reports. Licensed body
 models, source datasets, upstream repositories, generated trajectories, and
@@ -36,6 +41,10 @@ rtcmp run-method --method gmr --sequence manifests/pilot_sequence.yaml
 rtcmp run-method --method omniretarget --sequence manifests/pilot_sequence.yaml
 ```
 
+The revised commands for ProtoMotions v2.3/v3 and policy variants are not yet
+declared reproducible; `validate-stage1` must continue to fail until their
+environment locks, adapters, and full results are present.
+
 ## Stage 1 deliverables
 
 The decision is recorded in [`GO_NO_GO.md`](GO_NO_GO.md). Detailed evidence is
@@ -56,6 +65,8 @@ workflow in
 is rebuildable from ignored canonical trajectories and is therefore not
 committed. The plan-by-plan closure record is in
 [`docs/STAGE1_COMPLETION_AUDIT.md`](docs/STAGE1_COMPLETION_AUDIT.md).
+The method-by-method AMASS, scale, root, time, contact, and robot-asset audit is
+[`research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md`](research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md).
 
 ## License and assets
 

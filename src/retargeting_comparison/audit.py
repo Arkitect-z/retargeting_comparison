@@ -63,9 +63,9 @@ METHODS: tuple[dict[str, str], ...] = (
     _method("Controlled Dense-KeyBody IK", "benchmark v3", "2026", "canonical LAFAN BVH dense key bodies", "Unitree G1 29-DoF", "yes", "yes", "controlled dense-task retargeting", "Mink differential IK / DAQP", "MuJoCo + Mink", "joint limits only", "sequential framewise + weak q[t-1] cost", "none", "none", "no", "no", "no", "required; completed", "", "https://github.com/kevinzakka/mink", "controlled_baseline", "required"),
     _method("GMR", "bb1bbe40774794fceb2a7c579a3464a28e68c844", "2025", "LAFAN BVH", "Unitree G1 29-DoF", "yes", "yes", "body-level non-uniform retargeting", "two-stage Mink differential IK / DAQP", "MuJoCo + Mink", "MuJoCo geometry", "sequential framewise", "no explicit source contact objective", "no", "no", "no", "no", "required; completed", "", "https://github.com/YanjieZe/GMR", "retargeter", "required"),
     _method("OmniRetarget / Holosoma", "5f48635a3624656a5f46a07df26d43187e59f855", "2025", "LAFAN positions or SMPL-family interaction motion", "Unitree G1 29-DoF", "yes", "yes", "interaction-mesh constrained retargeting", "Sequential SOCP", "Holosoma kinematics", "MuJoCo surface distance in evaluator", "sequential trajectory", "foot sticking", "object and terrain interaction", "no", "no", "no", "required; completed", "", "https://github.com/amazon-far/holosoma", "retargeter", "required"),
-    _method("ProtoMotions v3", "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c", "2026", "SMPL MotionLib keypoints", "Unitree G1 29-DoF", "yes", "yes", "trajectory-level PyRoki retargeting", "JAX least squares", "PyRoki", "self-collision term present but disabled in frozen G1 script", "whole trajectory; configurable fixed buffer", "foot contact and foot tilt", "no object in retargeting script", "no", "no", "no", "conditional gate", "reported by bounded gate when not integration-ready", "https://github.com/NVlabs/ProtoMotions", "retargeter_and_framework", "conditional_1"),
-    _method("PHC retargeter", "846988d433ce1f341e85ac6fbd2cd51911bb3341", "2023", "AMASS/SMPL pose parameters", "Unitree G1 (repository fitting config)", "yes", "yes", "SMPL shape + robot motion fitting", "PyTorch Adam/Adadelta fitting", "SMPLSim / MuJoCo model", "not an explicit fitting objective", "whole sequence parameter tensor with smoothing postprocess", "not in documented fitting loss", "no", "no for fitting; yes for PHC controller", "no for fitting", "no", "conditional gate", "reported by bounded gate when LAFAN-to-SMPL adapter/environment is not ready", "https://github.com/ZhengyiLuo/PHC", "retargeter_component", "conditional_2"),
-    _method("ProtoMotions v2", "historical ref not frozen", "2024", "SMPL-family motion", "humanoids including historical G1 path", "requires historical verification", "historical pipeline", "Mink-based data retargeting", "Mink differential IK", "Mink", "backend-dependent", "sequential framewise", "configuration-dependent", "no", "no", "no", "no", "lineage only", "no stable historical ref frozen within Pilot", "https://github.com/NVlabs/ProtoMotions", "historical_retargeter", "lineage_only"),
+    _method("ProtoMotions v3", "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c", "2026", "fixed-SMPL MotionLib keypoints derived from AMASS or an audited adapter", "Unitree G1 29-DoF", "yes", "yes", "trajectory-level modified PyRoki retargeting", "whole-trajectory JAX least squares", "PyRoki", "self-collision term present but disabled in frozen G1 script", "whole trajectory; --target-raw-frames=600 required", "foot contact and foot tilt", "no object in retargeting script", "no", "no", "no", "required; pending revised Stage 1", "600-frame canonical output and frozen environment still required", "https://github.com/NVlabs/ProtoMotions", "retargeter_and_framework", "required"),
+    _method("PHC retargeter", "846988d433ce1f341e85ac6fbd2cd51911bb3341", "2023", "AMASS/SMPL pose parameters with robot-fitted neutral shape", "Unitree G1 fitting asset: 37 motors (23 body + 14 hands)", "no", "no canonical G1-29 output", "neutral-SMPL shape fit + whole-sequence robot motion fitting", "PyTorch Adam with per-iteration smoothing", "SMPLSim / MuJoCo model", "not an explicit fitting objective", "whole sequence parameter tensor with smoothing postprocess", "not in documented fitting loss", "no", "no for fitting; yes for PHC controller", "no for fitting", "no", "lineage and AMASS policy evidence", "official public fitting asset is not the canonical 29-DoF embodiment", "https://github.com/ZhengyiLuo/PHC", "retargeter_component", "lineage_noncanonical_asset"),
+    _method("ProtoMotions v2.3", "4a905b998101333a2fb91f2de8e2cab4bd0db68e", "2024", "165-D SMPL-X/AMASS-X pose contract with neutralized actor shape", "Unitree G1 29-DoF", "yes", "yes", "PHC-derived preprocessing/FK infrastructure plus sequential Mink retargeting", "Mink differential IK / quadprog", "Mink + MuJoCo + SMPLSim", "joint limits only", "sequential framewise after repeated frame-0 warm-up", "none", "no", "no", "no", "no", "required; pending revised Stage 1", "floating SMPLSim/Mink dependencies and canonical asset compatibility must be frozen", "https://github.com/NVlabs/ProtoMotions/tree/v2.3", "historical_retargeter", "required"),
     _method("SOMA Retargeter", "accessed 2026-07-22", "2025", "SOMA BVH/keypoints", "Unitree G1", "yes", "yes", "GPU IK", "Warp/Newton optimization", "Warp/Newton", "robot collision model", "trajectory/batched", "method-specific", "limited", "no", "no", "no", "lineage only", "no verified lossless LAFAN-to-SOMA adapter", "https://github.com/NVIDIA/soma-retargeter", "retargeter", "lineage_input_incompatible"),
     _method("cuRoboV2 MotionRetargeter", "accessed 2026-07-22", "2025", "SOMA/keypoints", "Unitree G1", "documented", "yes", "GPU kinematic optimization", "cuRobo optimization", "cuRobo", "cuRobo collision", "batched/online", "method-specific", "limited", "no", "no", "no", "lineage only", "no verified lossless LAFAN-to-SOMA adapter", "https://nvlabs.github.io/curobo/latest/getting-started/humanoid_retargeting.html", "retargeter", "lineage_input_incompatible"),
     _method("PhySINK / PHUMA", "paper/project evidence", "2025", "human motion", "Unitree G1", "paper claims", "paper-level", "physics-constrained retargeting", "physics-constrained optimization", "project-specific", "physics-aware", "trajectory", "physics contact", "physics/terrain", "method dependent", "no large RL run in Pilot", "no", "literature only", "no frozen public end-to-end Pilot pipeline verified", "https://davian-robotics.github.io/PHUMA/", "physics_aware_retargeting", "literature_only"),
@@ -179,9 +179,9 @@ dependency; they do not imply identical evaluation conditions.
 ```mermaid
 flowchart LR
   Mink[Mink backend] --> GMR[GMR]
-  Mink --> PM2[ProtoMotions v2 retargeting]
+  Mink --> PM2[ProtoMotions v2.3 retargeting]
   PyRoki[PyRoki backend] --> PM3[ProtoMotions v3 retargeting]
-  PHC[PHC SMPL fitting] --> PM2
+  PHC[PHC-derived preprocessing / FK] --> PM2
   SOCP[Sequential SOCP] --> Omni[OmniRetarget / Holosoma]
   Sparse[Sparse task tracking] --> Dense[Dense body preservation]
   Dense --> Interaction[Interaction preservation]
@@ -207,6 +207,9 @@ The graph is an evidence map, not a performance ranking.
         "Mink": (1.7, 1.2),
         "PyRoki": (3.6, 1.2),
         "Sequential SOCP": (5.5, 1.2),
+        "PHC preprocessing": (0.0, 0.2),
+        "ProtoMotions v2.3": (2.1, 0.2),
+        "ProtoMotions v3": (4.3, 0.2),
         "G1 reference": (7.4, 2.2),
     }
     graph_edges = (
@@ -217,6 +220,11 @@ The graph is an evidence map, not a performance ranking.
         ("Mink", "Sparse tasks", "backend"),
         ("Mink", "Dense body", "GMR / controlled"),
         ("PyRoki", "Dense body", "ProtoMotions v3"),
+        ("PHC preprocessing", "ProtoMotions v2.3", "derived infrastructure"),
+        ("Mink", "ProtoMotions v2.3", "sequential backend"),
+        ("PyRoki", "ProtoMotions v3", "trajectory backend"),
+        ("ProtoMotions v2.3", "Dense body", "official pipeline"),
+        ("ProtoMotions v3", "Dense body", "official pipeline"),
         ("Sequential SOCP", "Interaction", "OmniRetarget"),
         ("Sparse tasks", "G1 reference", "outputs"),
         ("Dense body", "G1 reference", "outputs"),
@@ -333,24 +341,46 @@ The graph is an evidence map, not a performance ranking.
                 },
                 {
                     "claim_id": "hist-proto-v3",
-                    "claim_text": "ProtoMotions v3 replaces the earlier Mink lineage with a trajectory-level PyRoki/JAX retargeter.",
+                    "claim_text": "ProtoMotions v3 replaces the earlier sequential Mink retargeter with a trajectory-level PyRoki/JAX pipeline while also changing preprocessing, targets, contacts, and limits.",
                     "claim_type": "historical",
                     "source_or_experiment": "official ProtoMotions README and retargeting workflow",
                     "method": "ProtoMotions v3",
                     "result_file": "research/sources.md",
                     "scope": "frozen v3 checkout",
-                    "caveat": "Historical v2 is not treated as an experimental point.",
+                    "caveat": "The v2/v3 pair is not a pure backend ablation.",
+                    "status": "supported",
+                },
+                {
+                    "claim_id": "hist-proto-v2",
+                    "claim_text": "ProtoMotions v2.3 is a 29-DoF G1 sequential Mink retargeter using PHC-derived preprocessing and FK infrastructure.",
+                    "claim_type": "historical",
+                    "source_or_experiment": "official ProtoMotions v2.3 tag",
+                    "method": "ProtoMotions v2.3",
+                    "result_file": "research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md",
+                    "scope": "frozen tag v2.3",
+                    "caveat": "Floating SMPLSim/Mink dependencies must be locked before the formal run.",
                     "status": "supported",
                 },
                 {
                     "claim_id": "hist-phc-boundary",
-                    "claim_text": "PHC repository retargeting preprocessing is distinct from its learned physics controller.",
+                    "claim_text": "PHC repository retargeting preprocessing is distinct from its learned physics controller, and its official G1 fitting asset is not canonical G1-29.",
                     "claim_type": "historical",
                     "source_or_experiment": "official PHC retargeting documentation and scripts",
                     "method": "PHC",
                     "result_file": "research/method_taxonomy.md",
                     "scope": "frozen checkout",
-                    "caveat": "The controller is excluded from the retargeter scatter.",
+                    "caveat": "The 37-motor fitting output and controller are both excluded from the canonical retargeter scatter.",
+                    "status": "supported",
+                },
+                {
+                    "claim_id": "hist-amass-preprocessing",
+                    "claim_text": "Frozen public methods apply materially different AMASS actor-shape, height, scale, root, temporal, ground, contact, and robot-asset policies.",
+                    "claim_type": "historical",
+                    "source_or_experiment": "first-party frozen code audit",
+                    "method": "GMR; Holosoma; ProtoMotions v2.3/v3; PHC",
+                    "result_file": "research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md",
+                    "scope": "frozen revisions",
+                    "caveat": "This is code-path evidence, not an AMASS dataset experiment.",
                     "status": "supported",
                 },
                 {
@@ -378,6 +408,17 @@ The graph is an evidence map, not a performance ranking.
                     "scope": "single frozen Pilot",
                     "caveat": "No component is a dataset-level ranking.",
                     "status": "supported",
+                },
+                {
+                    "claim_id": "plan-scale-sensitivity",
+                    "claim_text": "The revised Stage 1 requires pre-solver root/local scale perturbations and a controlled scale-policy transplant; post-hoc output decomposition is insufficient.",
+                    "claim_type": "scope",
+                    "source_or_experiment": "pre-registered revised Stage 1 protocol",
+                    "method": "all required public retargeters",
+                    "result_file": "configs/scale_policy_sensitivity.yaml",
+                    "scope": "revised Stage 1",
+                    "caveat": "No sensitivity result exists until all registered variants are rerun.",
+                    "status": "planned",
                 },
                 {
                     "claim_id": "exp-rfkpe",
@@ -457,10 +498,47 @@ The graph is an evidence map, not a performance ranking.
                     "native_environment": "hsretargeting",
                     "patch": "patches/holosoma/interaction-hard-constraint-flags.patch",
                 },
+                {
+                    "name": "protomotions_v2_3",
+                    "repository": "https://github.com/NVlabs/ProtoMotions.git",
+                    "tag": "v2.3",
+                    "commit": "4a905b998101333a2fb91f2de8e2cab4bd0db68e",
+                    "implementation": "PHC-derived preprocessing/FK plus sequential Mink",
+                    "native_environment": "to_be_frozen",
+                    "required_gates": [
+                        "165d_smplx_input_contract",
+                        "smplsim_and_mink_dependency_lock",
+                        "canonical_g1_fk_limits_geometry_audit",
+                        "600_frame_canonical_output",
+                    ],
+                },
+                {
+                    "name": "protomotions_v3",
+                    "repository": "https://github.com/NVlabs/ProtoMotions.git",
+                    "commit": "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c",
+                    "implementation": "whole-trajectory modified PyRoki/JAXLS",
+                    "native_environment": "to_be_frozen",
+                    "required_arguments": {"target_raw_frames": 600},
+                    "required_gates": [
+                        "canonical_g1_fk_and_joint_limit_audit",
+                        "600_frame_canonical_output",
+                    ],
+                },
             ],
-            "conditional_order": ["protomotions_v3", "phc"],
+            "required_experiments": [
+                "native_pipeline_comparison",
+                "controlled_scale_policy_transplant",
+                "within_method_root_local_scale_response",
+                "neutral_smplx_actor_shape_target_probe",
+            ],
+            "scale_policy_sensitivity_config": "configs/scale_policy_sensitivity.yaml",
+            "lineage_only": {
+                "phc": "official public G1 fitting asset is 37-motor and not canonical G1-29"
+            },
+            "conditional_order": ["soma_or_curobo"],
             "conditional_per_method_limit_s": 7200,
-            "conditional_total_limit_s": 14400,
+            "conditional_total_limit_s": 7200,
+            "stage1_completion_status": "incomplete_revised_scope",
             "full_lafan_authorized": False,
             "hard_stop_message": FULL_LAFAN_STOP_MESSAGE,
         },
@@ -512,14 +590,21 @@ The graph is an evidence map, not a performance ranking.
                 "https://github.com/NVlabs/ProtoMotions.git",
                 "ProtoMotions",
                 "Apache-2.0",
-                "conditional retargeter",
+                "required modified-PyRoki retargeter",
+            ),
+            (
+                "ProtoMotions v2.3",
+                "https://github.com/NVlabs/ProtoMotions.git",
+                "ProtoMotions-v2",
+                "Apache-2.0",
+                "required PHC-derived sequential-Mink retargeter",
             ),
             (
                 "PHC",
                 "https://github.com/ZhengyiLuo/PHC.git",
                 "PHC",
                 "MIT",
-                "conditional retargeter component",
+                "lineage and AMASS-policy evidence; noncanonical fitting asset",
             ),
         ):
             checkout = root / "external" / folder
@@ -530,7 +615,7 @@ The graph is an evidence map, not a performance ranking.
                     "commit": _run(["git", "-C", str(checkout), "rev-parse", "HEAD"]),
                     "status": (
                         _git_status(checkout)
-                        if (checkout / ".git").is_dir()
+                        if (checkout / ".git").exists()
                         else "pending checkout"
                     ),
                     "license": license_name,

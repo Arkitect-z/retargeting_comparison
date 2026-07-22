@@ -8,7 +8,7 @@ from retargeting_comparison.interactive_report import (
     build_interactive_report,
     collect_interactive_data,
 )
-from retargeting_comparison.io_utils import sha256_file
+from retargeting_comparison.io_utils import load_yaml, sha256_file
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,8 +19,15 @@ def test_interactive_data_is_complete_and_finite() -> None:
 
     assert [row["label"] for row in data["core"]] == list(OPERATING_POINTS)
     assert len(data["interaction"]) == 4
-    assert data["decision"] == "GO WITH CHANGES"
+    assert data["decision"] == "NO-GO"
     assert data["hard_stop_message"] == FULL_LAFAN_STOP_MESSAGE
+    required_names = {item["name"] for item in data["methods"]["required"]}
+    assert {"protomotions_v2_3", "protomotions_v3"}.issubset(required_names)
+    assert "37-motor" in data["methods"]["lineage_only"]["phc"]
+    sensitivity = load_yaml(ROOT / "configs" / "scale_policy_sensitivity.yaml")
+    assert len(sensitivity["within_method_variants"]) == 5
+    assert sensitivity["within_method_protocol"]["apply_before_solver"] is True
+    assert sensitivity["within_method_protocol"]["posthoc_qpos_rescale_forbidden"] is True
     for method in OPERATING_POINTS:
         series = data["frame_series"][method]
         assert len(series["source_frame_idx"]) == 600

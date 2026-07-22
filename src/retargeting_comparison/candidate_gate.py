@@ -1,9 +1,8 @@
-"""Bounded integration-readiness gates for conditional Stage 1 candidates.
+"""Legacy bounded integration-readiness evidence.
 
-The gate is deliberately stricter than a repository's claim to support G1.  A
-candidate must accept the frozen Pilot source, finish all 600 frames, and be
-convertible to the canonical 36-column G1 contract before it can become a
-plotted experimental point.
+The revised Stage 1 promotes ProtoMotions v2.3/v3 to required methods and keeps
+PHC as noncanonical lineage evidence.  This module preserves the earlier gate
+record for provenance; an N/A row can no longer satisfy revised completion.
 """
 
 from __future__ import annotations
@@ -21,6 +20,9 @@ from .schemas import CanonicalG1
 
 
 NA_OUTCOME = "N/A — public human→G1 pipeline not integration-ready under the Pilot budget"
+NONCANONICAL_OUTCOME = (
+    "N/A — official public G1 fitting asset is not the canonical 29-DoF embodiment"
+)
 GATE_LIMIT_S = 7200.0
 
 
@@ -91,19 +93,24 @@ def _row(
     environment_ready: bool,
     canonical_output: Path,
     source_frames: int,
+    g1_29dof_declared: bool,
+    role: str,
     evidence: list[str],
     started: float,
 ) -> dict[str, Any]:
     actual_commit = _git_commit(checkout)
     output_ready = _canonical_candidate_passed(canonical_output, source_frames)
     passed = bool(
-        actual_commit == expected_commit
+        g1_29dof_declared
+        and actual_commit == expected_commit
         and input_ready
         and environment_ready
         and output_ready
     )
     elapsed = time.perf_counter() - started
     missing = []
+    if not g1_29dof_declared:
+        missing.append("canonical G1-29 embodiment")
     if actual_commit != expected_commit:
         missing.append("frozen checkout")
     if not input_ready:
@@ -116,12 +123,19 @@ def _row(
         "candidate": candidate,
         "order": order,
         "status": "passed" if passed else "na",
-        "outcome": "Passed all Pilot integration gates" if passed else NA_OUTCOME,
+        "outcome": (
+            "Passed all Pilot integration gates"
+            if passed
+            else NONCANONICAL_OUTCOME
+            if not g1_29dof_declared
+            else NA_OUTCOME
+        ),
         "reason": "all mandatory gates passed" if passed else "missing: " + "; ".join(missing),
         "upstream_commit": actual_commit,
         "expected_commit": expected_commit,
         "input_ready": input_ready,
-        "g1_29dof_declared": True,
+        "g1_29dof_declared": g1_29dof_declared,
+        "revised_stage1_role": role,
         "environment_ready": environment_ready,
         "canonical_output_ready": output_ready,
         "full_sequence_run": output_ready,
@@ -165,6 +179,8 @@ def gate_candidates(repo_root: str | Path = ".") -> list[dict[str, Any]]:
         environment_ready=proto_environment,
         canonical_output=_candidate_output(root, "protomotions-v3", sequence_id),
         source_frames=source_frames,
+        g1_29dof_declared=True,
+        role="required_pending_full_integration",
         evidence=[
             "official pyroki/batch_retarget_to_g1_from_keypoints.py",
             f"target_raw_frames_cli={('--target-raw-frames' in proto_text)}",
@@ -191,10 +207,13 @@ def gate_candidates(repo_root: str | Path = ".") -> list[dict[str, Any]]:
         environment_ready=phc_environment,
         canonical_output=_candidate_output(root, "phc", sequence_id),
         source_frames=source_frames,
+        g1_29dof_declared=False,
+        role="lineage_and_amass_policy_evidence_only",
         evidence=[
             "official docs/retargeting.md",
             "official scripts/data_process/fit_smpl_shape.py",
             "official scripts/data_process/fit_smpl_motion.py",
+            "official fitting asset has 37 motors and is not canonical G1-29",
             f"native_adapter={phc_adapter.relative_to(root)}",
             "requires AMASS/SMPL parameters plus pre-fitted robot shape; raw BVH is not a native input",
         ],
