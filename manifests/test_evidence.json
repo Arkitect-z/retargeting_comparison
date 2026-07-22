@@ -2,7 +2,7 @@
   "capture_suite": {
     "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src conda run -n capture python -m pytest -q -p no:cacheprovider",
     "environment": "conda:capture",
-    "passed": 30,
+    "passed": 31,
     "result": "passed"
   },
   "full_lafan_authorized": false,
@@ -10,9 +10,13 @@
     "command": "conda run -n vis rerun rrd verify artifacts/visualization/stage1_comparison.rrd",
     "environment": "conda:vis",
     "frames": 600,
+    "instance_pose_component_chunks": 13776,
+    "rendering": "articulated_g1_visual_meshes",
     "rerun_version": "0.34.1",
-    "result": "verified"
+    "result": "verified",
+    "visual_asset_count": 35,
+    "visual_asset_entities": 140
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "verified_on": "2026-07-22"
 }

@@ -10,6 +10,7 @@ from retargeting_comparison.rerun_visualization import (
     UrdfSemanticKinematics,
     load_stage1_visualization,
     root_frame_points,
+    visual_instance_poses,
 )
 from retargeting_comparison.robot_model import CanonicalRobotModel, default_robot_scene
 
@@ -49,6 +50,19 @@ def test_root_frame_points_remove_translation_and_yaw() -> None:
     assert np.allclose(restored[1], local)
 
 
+@pytest.mark.skipif(not URDF.is_file(), reason="frozen Holosoma checkout is not present")
+def test_holosoma_g1_visual_assets_are_complete() -> None:
+    robot = UrdfSemanticKinematics(URDF)
+    assert len(robot.visuals) == 35
+    assert len({visual.link_name for visual in robot.visuals}) == 35
+    assert all(visual.mesh_path.is_file() for visual in robot.visuals)
+    assert sum(visual.mesh_path.stat().st_size for visual in robot.visuals) > 19_000_000
+    assert {visual.rgba for visual in robot.visuals} == {
+        (51, 51, 51, 255),
+        (178, 178, 178, 255),
+    }
+
+
 @pytest.mark.skipif(
     not URDF.is_file() or not default_robot_scene().is_file(),
     reason="frozen Holosoma checkout is not present",
@@ -84,9 +98,30 @@ def test_local_stage1_visualization_contract_when_artifacts_exist() -> None:
     data = load_stage1_visualization(".")
     assert data.frame_count == 600
     assert set(data.methods) == {style.key for style in METHOD_STYLES}
+    assert len(data.robot_visuals) == 35
     assert all(method.positions.shape == (600, 17, 3) for method in data.methods.values())
+    assert all(
+        method.link_transforms["pelvis"].shape == (600, 4, 4)
+        for method in data.methods.values()
+    )
     assert all(
         np.isfinite(value).all()
         for method in data.methods.values()
         for value in method.metrics.values()
     )
+    visual = data.robot_visuals[0]
+    method_keys = tuple(style.key for style in METHOD_STYLES)
+    transforms = {
+        key: data.methods[key].link_transforms
+        for key in method_keys
+    }
+    translations, rotations, scales = visual_instance_poses(
+        visual,
+        method_keys,
+        transforms,
+        frame=0,
+    )
+    assert translations.shape == (6, 3)
+    assert rotations.shape == (6, 3, 3)
+    assert scales.shape == (6, 3)
+    assert np.allclose(np.linalg.det(rotations), 1.0, atol=1e-8)

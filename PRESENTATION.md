@@ -46,7 +46,7 @@ This is one LAFAN operating point and two interaction cases. No dataset-level ra
 
 ## 12. Synchronized visual evidence
 
-The Rerun recording provides side-by-side world motion, world overlay, root-frame pose, Sparse seed, foot-state, and per-frame metric views for every canonical output.
+The Rerun recording provides full articulated G1 meshes in side-by-side world, world overlay, root-frame pose, and Sparse seed views, together with foot-state and per-frame metrics for every canonical output.
 
 ## 13. Stage 2 budget
 

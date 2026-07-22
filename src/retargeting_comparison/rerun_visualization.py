@@ -42,6 +42,23 @@ METHOD_STYLES = (
 
 SOURCE_STYLE = MethodStyle("source-human", "Source human", (230, 234, 241), True)
 
+LANE_OFFSETS = {
+    "source-human": (-6.0, 3.0, 0.0),
+    "sparse-neutral": (-2.0, 3.0, 0.0),
+    "dense": (2.0, 3.0, 0.0),
+    "gmr": (6.0, 3.0, 0.0),
+    "omniretarget": (-4.0, -3.0, 0.0),
+    "sparse-a": (0.0, -3.0, 0.0),
+    "sparse-b": (4.0, -3.0, 0.0),
+}
+
+VIEW_METHOD_KEYS = {
+    "grid": tuple(style.key for style in METHOD_STYLES),
+    "world": tuple(style.key for style in METHOD_STYLES if style.operating_point),
+    "root_frame": tuple(style.key for style in METHOD_STYLES if style.operating_point),
+    "seeds": tuple(style.key for style in METHOD_STYLES if style.key.startswith("sparse-")),
+}
+
 ROBOT_SEMANTIC_LINKS = {
     "root": "pelvis",
     "torso": "torso_link",
@@ -123,6 +140,26 @@ def _rpy_matrix(rpy: np.ndarray) -> np.ndarray:
     return rz @ ry @ rx
 
 
+def _origin_transform(element: ET.Element | None) -> np.ndarray:
+    transform = np.eye(4, dtype=np.float64)
+    if element is None:
+        return transform
+    transform[:3, :3] = _rpy_matrix(
+        _parse_vector(element.attrib.get("rpy", "0 0 0"))
+    )
+    transform[:3, 3] = _parse_vector(element.attrib.get("xyz", "0 0 0"))
+    return transform
+
+
+def _rgba32(value: str | None) -> tuple[int, int, int, int]:
+    if value is None:
+        return (178, 178, 178, 255)
+    rgba = np.fromstring(value, sep=" ", dtype=np.float64)
+    if rgba.shape != (4,) or not np.isfinite(rgba).all():
+        raise ValueError(f"Expected a finite URDF RGBA four-vector, got {value!r}")
+    return tuple(int(round(component * 255.0)) for component in np.clip(rgba, 0.0, 1.0))
+
+
 def _axis_rotation(axis: np.ndarray, angle: np.ndarray) -> np.ndarray:
     """Vectorized homogeneous Rodrigues rotation for one URDF joint axis."""
 
@@ -149,6 +186,17 @@ def _axis_rotation(axis: np.ndarray, angle: np.ndarray) -> np.ndarray:
     return result
 
 
+@dataclass(frozen=True)
+class UrdfVisual:
+    """One link-local visual mesh from the frozen G1 URDF."""
+
+    link_name: str
+    mesh_path: Path
+    origin: np.ndarray
+    scale: np.ndarray
+    rgba: tuple[int, int, int, int]
+
+
 class UrdfSemanticKinematics:
     """Compute the evaluator's semantic G1 points from canonical qpos."""
 
@@ -166,6 +214,51 @@ class UrdfSemanticKinematics:
         if roots != {"pelvis"}:
             raise ValueError(f"Expected G1 base link 'pelvis', got roots {sorted(roots)}")
 
+        named_materials: dict[str, tuple[int, int, int, int]] = {}
+        for material in robot.findall("material"):
+            color = material.find("color")
+            if color is not None:
+                named_materials[material.attrib["name"]] = _rgba32(
+                    color.attrib.get("rgba")
+                )
+        visuals: list[UrdfVisual] = []
+        for link in robot.findall("link"):
+            link_name = link.attrib["name"]
+            for visual in link.findall("visual"):
+                mesh = visual.find("geometry/mesh")
+                if mesh is None:
+                    continue
+                filename = mesh.attrib["filename"]
+                if filename.startswith("package://"):
+                    raise ValueError(
+                        f"Package-relative G1 visual mesh is unsupported: {filename}"
+                    )
+                mesh_path = (self.urdf_path.parent / filename).resolve()
+                if not mesh_path.is_file():
+                    raise FileNotFoundError(
+                        f"G1 URDF visual mesh is missing for {link_name}: {mesh_path}"
+                    )
+                material = visual.find("material")
+                rgba = (178, 178, 178, 255)
+                if material is not None:
+                    color = material.find("color")
+                    if color is not None:
+                        rgba = _rgba32(color.attrib.get("rgba"))
+                    elif material.attrib.get("name") in named_materials:
+                        rgba = named_materials[material.attrib["name"]]
+                scale = _parse_vector(mesh.attrib.get("scale", "1 1 1"))
+                if np.any(scale <= 0.0):
+                    raise ValueError(f"Non-positive G1 visual scale for {link_name}")
+                visuals.append(
+                    UrdfVisual(
+                        link_name=link_name,
+                        mesh_path=mesh_path,
+                        origin=_origin_transform(visual.find("origin")),
+                        scale=scale,
+                        rgba=rgba,
+                    )
+                )
+
         joints = []
         actuated_names = []
         for element in robot.findall("joint"):
@@ -173,16 +266,7 @@ class UrdfSemanticKinematics:
             joint_type = element.attrib["type"]
             parent = element.find("parent").attrib["link"]  # type: ignore[union-attr]
             child = element.find("child").attrib["link"]  # type: ignore[union-attr]
-            origin_element = element.find("origin")
-            xyz = _parse_vector(
-                origin_element.attrib.get("xyz", "0 0 0") if origin_element is not None else "0 0 0"
-            )
-            rpy = _parse_vector(
-                origin_element.attrib.get("rpy", "0 0 0") if origin_element is not None else "0 0 0"
-            )
-            origin = np.eye(4, dtype=np.float64)
-            origin[:3, :3] = _rpy_matrix(rpy)
-            origin[:3, 3] = xyz
+            origin = _origin_transform(element.find("origin"))
             axis_element = element.find("axis")
             axis = _parse_vector(
                 axis_element.attrib.get("xyz", "1 0 0") if axis_element is not None else "1 0 0"
@@ -195,6 +279,7 @@ class UrdfSemanticKinematics:
         if tuple(actuated_names) != G1_JOINT_NAMES:
             raise ValueError("G1 URDF joint order differs from the canonical 29-DoF contract")
         self.joints = tuple(joints)
+        self.visuals = tuple(visuals)
 
     def semantic_positions(self, qpos: np.ndarray) -> dict[str, np.ndarray]:
         value = np.asarray(qpos, dtype=np.float64)
@@ -204,6 +289,11 @@ class UrdfSemanticKinematics:
         return {name: points[index] for index, name in enumerate(ROBOT_SEMANTICS)}
 
     def motion_positions(self, qpos: np.ndarray) -> np.ndarray:
+        return self._positions_from_link_transforms(self.motion_link_transforms(qpos))
+
+    def motion_link_transforms(self, qpos: np.ndarray) -> dict[str, np.ndarray]:
+        """Return batched world-from-link transforms for every URDF link."""
+
         values = np.asarray(qpos, dtype=np.float64)
         if values.ndim != 2 or values.shape[1] != 36:
             raise ValueError("Canonical G1 motion qpos must have shape [T,36]")
@@ -221,6 +311,13 @@ class UrdfSemanticKinematics:
                 local = origin @ rotation
             transforms[child] = transforms[parent] @ local
 
+        return transforms
+
+    @staticmethod
+    def _positions_from_link_transforms(
+        transforms: dict[str, np.ndarray],
+    ) -> np.ndarray:
+        frames = len(transforms["pelvis"])
         result = np.empty((frames, len(ROBOT_SEMANTICS), 3), dtype=np.float64)
         for semantic, link in ROBOT_SEMANTIC_LINKS.items():
             if semantic == "head":
@@ -238,6 +335,7 @@ class MethodVisualization:
     style: MethodStyle
     motion: CanonicalG1
     positions: np.ndarray
+    link_transforms: dict[str, np.ndarray]
     metrics: dict[str, np.ndarray]
 
 
@@ -249,6 +347,7 @@ class Stage1Visualization:
     human_scale: float
     methods: dict[str, MethodVisualization]
     urdf_path: Path
+    robot_visuals: tuple[UrdfVisual, ...]
 
     @property
     def frame_count(self) -> int:
@@ -328,11 +427,18 @@ def load_stage1_visualization(
         motion.validate(source_frame_count=len(human.timestamps))
         if not np.array_equal(motion.source_frame_idx, np.arange(len(human.timestamps))):
             raise ValueError(f"{style.key} does not cover the complete source frame timeline")
-        positions = kinematics.motion_positions(motion.qpos)
+        link_transforms = kinematics.motion_link_transforms(motion.qpos)
+        positions = kinematics._positions_from_link_transforms(link_transforms)
         metrics = _load_metrics(root / "metrics" / "runs" / f"{style.key}_per_frame.csv", len(human.timestamps))
         if not all(np.isfinite(value).all() for value in metrics.values()):
             raise ValueError(f"{style.key} visualization metrics contain missing or non-finite values")
-        methods[style.key] = MethodVisualization(style, motion, positions, metrics)
+        methods[style.key] = MethodVisualization(
+            style,
+            motion,
+            positions,
+            link_transforms,
+            metrics,
+        )
 
     reference = methods["sparse-neutral"].positions
     return Stage1Visualization(
@@ -342,6 +448,7 @@ def load_stage1_visualization(
         human_scale=_height_scale(human, reference),
         methods=methods,
         urdf_path=urdf_path,
+        robot_visuals=kinematics.visuals,
     )
 
 
@@ -368,6 +475,63 @@ def _world_aligned_robot(method: MethodVisualization) -> np.ndarray:
     return points
 
 
+def _world_aligned_link_transforms(
+    method: MethodVisualization,
+) -> dict[str, np.ndarray]:
+    initial_root = method.positions[0, ROBOT_SEMANTIC_INDEX["root"]]
+    offset = np.asarray([-initial_root[0], -initial_root[1], 0.0])
+    result: dict[str, np.ndarray] = {}
+    for link, transforms in method.link_transforms.items():
+        aligned = transforms.copy()
+        aligned[:, :3, 3] += offset
+        result[link] = aligned
+    return result
+
+
+def _root_frame_link_transforms(
+    method: MethodVisualization,
+) -> dict[str, np.ndarray]:
+    roots = method.positions[:, ROBOT_SEMANTIC_INDEX["root"]]
+    yaw = yaw_from_matrix(quaternion_wxyz_to_matrix(method.motion.qpos[:, 3:7]))
+    cosine = np.cos(-yaw)
+    sine = np.sin(-yaw)
+    world_to_root = np.zeros((len(roots), 4, 4), dtype=np.float64)
+    world_to_root[:, 0, 0] = cosine
+    world_to_root[:, 0, 1] = -sine
+    world_to_root[:, 1, 0] = sine
+    world_to_root[:, 1, 1] = cosine
+    world_to_root[:, 2, 2] = 1.0
+    world_to_root[:, 3, 3] = 1.0
+    world_to_root[:, :3, 3] = -np.einsum(
+        "tij,tj->ti", world_to_root[:, :3, :3], roots
+    )
+    return {
+        link: world_to_root @ transforms
+        for link, transforms in method.link_transforms.items()
+    }
+
+
+def visual_instance_poses(
+    visual: UrdfVisual,
+    method_keys: tuple[str, ...],
+    transforms: dict[str, dict[str, np.ndarray]],
+    frame: int,
+    offsets: dict[str, tuple[float, float, float]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build world-space poses for one articulated visual link across methods."""
+
+    poses = []
+    for key in method_keys:
+        pose = transforms[key][visual.link_name][frame] @ visual.origin
+        if offsets is not None:
+            pose = pose.copy()
+            pose[:3, 3] += np.asarray(offsets[key], dtype=np.float64)
+        poses.append(pose)
+    stacked = np.asarray(poses, dtype=np.float64)
+    scales = np.broadcast_to(visual.scale, (len(method_keys), 3)).copy()
+    return stacked[:, :3, 3], stacked[:, :3, :3], scales
+
+
 def _world_aligned_human(data: Stage1Visualization) -> np.ndarray:
     reference_root = data.methods["sparse-neutral"].positions[0, ROBOT_SEMANTIC_INDEX["root"]]
     aligned_origin = np.asarray([0.0, 0.0, reference_root[2]])
@@ -387,10 +551,14 @@ def _segments(points: np.ndarray, edges: tuple[tuple[int, int], ...]) -> list[np
 
 
 def _recording_id(data: Stage1Visualization) -> str:
-    digest = hashlib.sha256(data.human.source_sha256.encode())
+    digest = hashlib.sha256(b"articulated_g1_visual_meshes_v2")
+    digest.update(data.human.source_sha256.encode())
+    digest.update(bytes.fromhex(sha256_file(data.urdf_path)))
     for style in METHOD_STYLES:
         path = data.repo_root / "runs" / data.sequence["sequence_id"] / style.key / "canonical_g1.npz"
         digest.update(bytes.fromhex(sha256_file(path)))
+    for visual in data.robot_visuals:
+        digest.update(bytes.fromhex(sha256_file(visual.mesh_path)))
     return str(uuid.UUID(bytes=digest.digest()[:16]))
 
 
@@ -496,6 +664,49 @@ def _log_series_styles(rr: Any, data: Stage1Visualization) -> None:
             )
 
 
+def _mesh_entity(view: str, index: int, visual: UrdfVisual) -> str:
+    return f"{view}/g1_visual_meshes/{index:02d}_{visual.link_name}"
+
+
+def _log_g1_mesh_assets(rr: Any, data: Stage1Visualization) -> None:
+    """Embed one copy of each G1 visual mesh per comparison coordinate space."""
+
+    for view in VIEW_METHOD_KEYS:
+        for index, visual in enumerate(data.robot_visuals):
+            rr.log(
+                _mesh_entity(view, index, visual),
+                rr.Asset3D(path=visual.mesh_path, albedo_factor=visual.rgba),
+                static=True,
+            )
+
+
+def _log_g1_mesh_instances(
+    rr: Any,
+    data: Stage1Visualization,
+    view: str,
+    transforms: dict[str, dict[str, np.ndarray]],
+    frame: int,
+    offsets: dict[str, tuple[float, float, float]] | None = None,
+) -> None:
+    method_keys = VIEW_METHOD_KEYS[view]
+    for index, visual in enumerate(data.robot_visuals):
+        translations, rotations, scales = visual_instance_poses(
+            visual,
+            method_keys,
+            transforms,
+            frame,
+            offsets,
+        )
+        rr.log(
+            _mesh_entity(view, index, visual),
+            rr.InstancePoses3D(
+                translations=translations,
+                mat3x3=rotations,
+                scales=scales,
+            ),
+        )
+
+
 def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
     for root in ("grid", "world", "root_frame", "seeds"):
         rr.log(root, rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
@@ -507,19 +718,10 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
         rr.LineStrips3D([human_root_path], colors=SOURCE_STYLE.color, radii=0.008),
         static=True,
     )
-    lane_offsets = {
-        "source-human": np.asarray([-6.0, 3.0, 0.0]),
-        "sparse-neutral": np.asarray([-2.0, 3.0, 0.0]),
-        "dense": np.asarray([2.0, 3.0, 0.0]),
-        "gmr": np.asarray([6.0, 3.0, 0.0]),
-        "omniretarget": np.asarray([-4.0, -3.0, 0.0]),
-        "sparse-a": np.asarray([0.0, -3.0, 0.0]),
-        "sparse-b": np.asarray([4.0, -3.0, 0.0]),
-    }
     rr.log(
         "grid/source-human/root_path",
         rr.LineStrips3D(
-            [human_root_path + lane_offsets["source-human"]],
+            [human_root_path + np.asarray(LANE_OFFSETS["source-human"])],
             colors=SOURCE_STYLE.color,
             radii=0.008,
         ),
@@ -532,7 +734,9 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
         rr.log(
             f"grid/{style.key}/root_path",
             rr.LineStrips3D(
-                [root_path + lane_offsets[style.key]], colors=style.color, radii=0.008
+                [root_path + np.asarray(LANE_OFFSETS[style.key])],
+                colors=style.color,
+                radii=0.008,
             ),
             static=True,
         )
@@ -553,6 +757,7 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
             f"- Human display scale: {data.human_scale:.6f}",
             "- Green feet: frozen source stance without skating",
             "- Red feet: source stance with target foot speed > 1 cm/s",
+            f"- G1 appearance: {len(data.robot_visuals)} articulated Holosoma URDF visual meshes",
             "- Side-by-side view preserves root displacement and ground height",
             "- Root-frame view removes each motion's root translation and yaw",
             "",
@@ -560,6 +765,7 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
         ]
     )
     rr.log("metadata/readme", rr.TextDocument(summary, media_type="text/markdown"), static=True)
+    _log_g1_mesh_assets(rr, data)
 
 
 def write_rerun_recording(
@@ -622,14 +828,13 @@ def write_rerun_recording(
         )
         for key, method in data.methods.items()
     }
-    lane_offsets = {
-        "source-human": np.asarray([-6.0, 3.0, 0.0]),
-        "sparse-neutral": np.asarray([-2.0, 3.0, 0.0]),
-        "dense": np.asarray([2.0, 3.0, 0.0]),
-        "gmr": np.asarray([6.0, 3.0, 0.0]),
-        "omniretarget": np.asarray([-4.0, -3.0, 0.0]),
-        "sparse-a": np.asarray([0.0, -3.0, 0.0]),
-        "sparse-b": np.asarray([4.0, -3.0, 0.0]),
+    world_link_transforms = {
+        key: _world_aligned_link_transforms(method)
+        for key, method in data.methods.items()
+    }
+    root_link_transforms = {
+        key: _root_frame_link_transforms(method)
+        for key, method in data.methods.items()
     }
     foot_indices = (
         ROBOT_SEMANTIC_INDEX["left_toe"],
@@ -650,7 +855,7 @@ def write_rerun_recording(
         _log_pose(
             rr,
             "grid/source-human",
-            world_human[frame] + lane_offsets["source-human"],
+            world_human[frame] + np.asarray(LANE_OFFSETS["source-human"]),
             human_edges,
             SOURCE_STYLE,
             SOURCE_STYLE.display_name,
@@ -686,7 +891,7 @@ def write_rerun_recording(
             _log_pose(
                 rr,
                 f"grid/{style.key}",
-                world_methods[style.key][frame] + lane_offsets[style.key],
+                world_methods[style.key][frame] + np.asarray(LANE_OFFSETS[style.key]),
                 ROBOT_BONE_INDICES,
                 style,
                 label,
@@ -740,9 +945,39 @@ def write_rerun_recording(
                     rr.Scalars(_method_metric(data, style.key, field, frame)),
                 )
 
+        _log_g1_mesh_instances(
+            rr,
+            data,
+            "grid",
+            world_link_transforms,
+            frame,
+            LANE_OFFSETS,
+        )
+        _log_g1_mesh_instances(
+            rr,
+            data,
+            "world",
+            world_link_transforms,
+            frame,
+        )
+        _log_g1_mesh_instances(
+            rr,
+            data,
+            "root_frame",
+            root_link_transforms,
+            frame,
+        )
+        _log_g1_mesh_instances(
+            rr,
+            data,
+            "seeds",
+            root_link_transforms,
+            frame,
+        )
+
     rr.disconnect()
     result: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "sequence_id": data.sequence["sequence_id"],
         "source_sha256": data.human.source_sha256,
         "rerun_version": rr.__version__,
@@ -764,6 +999,15 @@ def write_rerun_recording(
         },
         "canonical_urdf": str(data.urdf_path.relative_to(data.repo_root)),
         "canonical_urdf_sha256": sha256_file(data.urdf_path),
+        "rendering": "articulated_g1_visual_meshes",
+        "robot_visual_asset_count": len(data.robot_visuals),
+        "robot_visual_assets": {
+            visual.mesh_path.relative_to(data.repo_root).as_posix(): sha256_file(
+                visual.mesh_path
+            )
+            for visual in data.robot_visuals
+        },
+        "robot_instances_per_frame": sum(len(keys) for keys in VIEW_METHOD_KEYS.values()),
         "output": str(output_path) if output_path is not None else None,
     }
     if output_path is not None:

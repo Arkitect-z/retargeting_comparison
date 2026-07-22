@@ -135,15 +135,27 @@ def _rerun_visualization_check(root: Path, sequence_id: str) -> bool:
         "sparse-b",
     }
     if (
-        value.get("sequence_id") != sequence_id
+        value.get("schema_version") != 2
+        or value.get("sequence_id") != sequence_id
         or set(value.get("methods", [])) != expected_methods
         or value.get("frames_logged") != 600
+        or value.get("rendering") != "articulated_g1_visual_meshes"
+        or value.get("robot_visual_asset_count") != 35
+        or value.get("robot_instances_per_frame") != 17
         or tuple(int(part) for part in str(value.get("rerun_version", "0.0")).split(".")[:2])
         < (0, 34)
         or not output.is_file()
+        or int(value.get("output_size_bytes", 0)) < 40_000_000
         or value.get("output_sha256") != sha256_file(output)
     ):
         return False
+    assets = value.get("robot_visual_assets", {})
+    if len(assets) != 35:
+        return False
+    for asset_path, expected_hash in assets.items():
+        asset = root / asset_path
+        if not asset.is_file() or sha256_file(asset) != expected_hash:
+            return False
     for label in expected_methods:
         run = root / "runs" / sequence_id / label / "canonical_g1.npz"
         if not run.is_file() or value.get("method_outputs", {}).get(label) != sha256_file(run):
@@ -159,11 +171,15 @@ def _test_evidence_check(root: Path) -> bool:
     capture = value.get("capture_suite", {})
     rerun = value.get("rerun_recording", {})
     return bool(
-        value.get("full_lafan_authorized") is False
+        value.get("schema_version") == 2
+        and value.get("full_lafan_authorized") is False
         and capture.get("result") == "passed"
-        and int(capture.get("passed", 0)) >= 30
+        and int(capture.get("passed", 0)) >= 31
         and rerun.get("result") == "verified"
         and int(rerun.get("frames", 0)) == 600
+        and rerun.get("rendering") == "articulated_g1_visual_meshes"
+        and int(rerun.get("visual_asset_count", 0)) == 35
+        and int(rerun.get("visual_asset_entities", 0)) == 140
     )
 
 

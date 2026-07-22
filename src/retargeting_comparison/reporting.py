@@ -458,7 +458,7 @@ The targeted and untracked columns are intentionally separate: a method can matc
 
 ## Synchronized visual inspection
 
-The rebuildable Rerun recording synchronizes the source human, all four operating points, and Sparse seeds A/B. Separate side-by-side world, overlaid world, root-frame, and Sparse-seed views expose root tracking, ground penetration, foot skating, and hidden-pose divergence. The viewer replays canonical outputs and is excluded from formal method timing; see `docs/RERUN_VISUALIZATION.md` and `manifests/rerun_visualization.json`.
+The rebuildable Rerun recording synchronizes the source human, full articulated G1 visual meshes for all four operating points, and full G1 meshes for Sparse seeds A/B. Separate side-by-side world, overlaid world, root-frame, and Sparse-seed views expose root tracking, ground penetration, foot skating, and hidden-pose divergence. The viewer replays canonical outputs and is excluded from formal method timing; see `docs/RERUN_VISUALIZATION.md` and `manifests/rerun_visualization.json`.
 
 ## Interaction case study
 
@@ -588,7 +588,7 @@ This is one LAFAN operating point and two interaction cases. No dataset-level ra
 
 ## 12. Synchronized visual evidence
 
-The Rerun recording provides side-by-side world motion, world overlay, root-frame pose, Sparse seed, foot-state, and per-frame metric views for every canonical output.
+The Rerun recording provides full articulated G1 meshes in side-by-side world, world overlay, root-frame pose, and Sparse seed views, together with foot-state and per-frame metrics for every canonical output.
 
 ## 13. Stage 2 budget
 

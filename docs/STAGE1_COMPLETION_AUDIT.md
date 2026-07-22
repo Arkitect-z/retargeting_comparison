@@ -22,13 +22,13 @@ the `200 GB` gate. No Full-LAFAN job was started.
 | Unified evaluator | targeted, untracked, temporal, artifact, completion metrics | Complete |
 | Timing protocol | cold process, one warm-up, three measured warm runs | Complete |
 | Interaction case study | box/climb × Full/No-Hard with surface distances | Complete |
-| Synchronized visual inspection | 600-frame Rerun recording for source and all six G1 outputs | Complete |
+| Synchronized visual inspection | 600-frame Rerun recording with all 35 articulated G1 visual meshes for all six outputs | Complete |
 | Reports and presentation | eight required Markdown reports; 13 presentation sections | Complete |
 | Stage 1 validator | all recorded acceptance checks true | Complete |
 
 ## Automated regression coverage
 
-The `capture` suite currently passes 30 tests. It covers BVH parsing and the
+The `capture` suite currently passes 31 tests. It covers BVH parsing and the
 frozen selector order, SMPL/SMPL-X finite forwards, quaternion conventions,
 canonical schemas/completion, Sparse/Dense controls, deterministic seeds,
 canonical MuJoCo versus visualization-URDF FK at random qpos, synthetic

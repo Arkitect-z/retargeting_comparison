@@ -49,8 +49,9 @@ rebuild it independently with `rtcmp build-interactive-report`. Machine-readable
 figure source data, provenance, and validation results live under `metrics/`,
 `figures/`, and `manifests/`.
 
-For synchronized 3D inspection of the source, all four operating points, and
-Sparse seeds A/B, use the Rerun workflow in
+For synchronized 3D inspection of the source and full articulated G1 visual
+meshes for all four operating points plus Sparse seeds A/B, use the Rerun
+workflow in
 [`docs/RERUN_VISUALIZATION.md`](docs/RERUN_VISUALIZATION.md). The complete `.rrd`
 is rebuildable from ignored canonical trajectories and is therefore not
 committed. The plan-by-plan closure record is in
