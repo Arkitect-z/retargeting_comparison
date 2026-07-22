@@ -12,6 +12,7 @@ canonical_robot:
   upstream: https://github.com/amazon-far/holosoma.git
   commit: 5f48635a3624656a5f46a07df26d43187e59f855
   xml: external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.xml
+  urdf: external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.urdf
 timing:
   cold_runs: 1
   warmup_runs: 1
@@ -25,4 +26,3 @@ stage2_budget:
   wall_time_hours: 48
   storage_gb: 200
   projection_safety_factor: 1.5
-

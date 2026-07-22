@@ -12,6 +12,8 @@ source_adapters/
 /runs/
 videos/
 /logs/
+*.rrd
+*.rbl
 
 # Environments and caches
 .venv/

@@ -36,6 +36,16 @@ class SourceFeatures:
     rejection_reason: str
 
 
+def pilot_selection_key(value: SourceFeatures) -> tuple[float, str, int]:
+    """Frozen deterministic ordering for eligible Pilot windows."""
+
+    return (
+        abs(value.duration_s - 20.0),
+        Path(value.source_file).name.lower(),
+        value.frame_start,
+    )
+
+
 def _find_joint(names: tuple[str, ...], aliases: tuple[str, ...]) -> int:
     lowered = {name.lower(): index for index, name in enumerate(names)}
     for alias in aliases:
@@ -190,14 +200,7 @@ def select_pilot(
     eligible = [value for value in features if value.eligible]
     if not eligible:
         raise RuntimeError("No LAFAN sequence satisfies the frozen source-only criteria")
-    selected = min(
-        eligible,
-        key=lambda value: (
-            abs(value.duration_s - 20.0),
-            Path(value.source_file).name.lower(),
-            value.frame_start,
-        ),
-    )
+    selected = min(eligible, key=pilot_selection_key)
     output = Path(selection_csv)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as stream:

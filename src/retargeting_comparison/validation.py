@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,147 @@ def _core_motion_check(motion: CanonicalG1, source_frame_count: int) -> bool:
     )
 
 
+def _run_hashes_check(root: Path, sequence_id: str) -> bool:
+    for label, output in _run_paths(root).items():
+        manifest_path = root / "manifests" / "runs" / f"{sequence_id}__{label}.json"
+        if not manifest_path.is_file() or not output.is_file():
+            return False
+        manifest = RunManifest.load(manifest_path)
+        if manifest.output_sha256 != sha256_file(output):
+            return False
+    return True
+
+
+def _smoke_check(root: Path, sequence_id: str) -> bool:
+    labels = ("sparse-neutral-smoke2", "dense-smoke2", "gmr-smoke2", "omniretarget-smoke2")
+    for label in labels:
+        output = root / "runs" / sequence_id / label / "canonical_g1.npz"
+        manifest_path = root / "runs" / "manifests" / f"{sequence_id}__{label}.json"
+        if not output.is_file() or not manifest_path.is_file():
+            return False
+        manifest = RunManifest.load(manifest_path)
+        motion = CanonicalG1.load(output)
+        if (
+            manifest.status != RunStatus.INCOMPLETE
+            or manifest.output_sha256 != sha256_file(output)
+            or len(motion.qpos) != 2
+            or not np.isfinite(motion.qpos).all()
+        ):
+            return False
+    return True
+
+
+def _body_models_check(root: Path) -> bool:
+    path = root / "manifests" / "body_models.yaml"
+    if not path.is_file():
+        return False
+    value = load_yaml(path)
+    for name in ("smpl", "smplx"):
+        model = value.get(name, {})
+        asset = (root / str(model.get("path", ""))).resolve()
+        if (
+            model.get("finite_forward") is not True
+            or not asset.is_file()
+            or model.get("sha256") != sha256_file(asset)
+        ):
+            return False
+    return value.get("original_smpl_pickle_used") is False
+
+
+def _source_adapters_check(root: Path) -> bool:
+    path = root / "metrics" / "source_adapter_errors.csv"
+    if not path.is_file():
+        return False
+    rows = pd.read_csv(path)
+    if len(rows) < 2:
+        return False
+    required = ("frame_count_match", "fps_match", "left_right_match")
+    for column in required:
+        values = rows[column]
+        normalized = values if values.dtype == bool else values.astype(str).str.lower().eq("true")
+        if not bool(normalized.all()):
+            return False
+    numeric = rows[["common_joints", "root_aligned_mpjpe_m", "max_joint_error_m"]].to_numpy()
+    return bool(
+        rows.status.astype(str).str.lower().eq("passed").all()
+        and np.isfinite(numeric).all()
+        and (rows.common_joints > 0).all()
+    )
+
+
+def _artifact_hashes_check(root: Path) -> bool:
+    path = root / "manifests" / "artifacts.csv"
+    if not path.is_file():
+        return False
+    with path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    if not rows:
+        return False
+    for row in rows:
+        # stage1_validation.json is rewritten by this validator before the
+        # artifact manifest is regenerated, so checking its prior self-entry
+        # would create a false recursive hash mismatch.
+        if row["path"] == "manifests/stage1_validation.json":
+            continue
+        artifact = root / row["path"]
+        if (
+            not artifact.is_file()
+            or artifact.stat().st_size != int(row["size_bytes"])
+            or sha256_file(artifact) != row["sha256"]
+        ):
+            return False
+    return True
+
+
+def _rerun_visualization_check(root: Path, sequence_id: str) -> bool:
+    path = root / "manifests" / "rerun_visualization.json"
+    if not path.is_file():
+        return False
+    value = json.loads(path.read_text())
+    output = Path(value.get("output", ""))
+    if not output.is_absolute():
+        output = root / output
+    expected_methods = {
+        "sparse-neutral",
+        "dense",
+        "gmr",
+        "omniretarget",
+        "sparse-a",
+        "sparse-b",
+    }
+    if (
+        value.get("sequence_id") != sequence_id
+        or set(value.get("methods", [])) != expected_methods
+        or value.get("frames_logged") != 600
+        or tuple(int(part) for part in str(value.get("rerun_version", "0.0")).split(".")[:2])
+        < (0, 34)
+        or not output.is_file()
+        or value.get("output_sha256") != sha256_file(output)
+    ):
+        return False
+    for label in expected_methods:
+        run = root / "runs" / sequence_id / label / "canonical_g1.npz"
+        if not run.is_file() or value.get("method_outputs", {}).get(label) != sha256_file(run):
+            return False
+    return True
+
+
+def _test_evidence_check(root: Path) -> bool:
+    path = root / "manifests" / "test_evidence.json"
+    if not path.is_file():
+        return False
+    value = json.loads(path.read_text())
+    capture = value.get("capture_suite", {})
+    rerun = value.get("rerun_recording", {})
+    return bool(
+        value.get("full_lafan_authorized") is False
+        and capture.get("result") == "passed"
+        and int(capture.get("passed", 0)) >= 30
+        and rerun.get("result") == "verified"
+        and int(rerun.get("frames", 0)) == 600
+    )
+
+
 def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
     root = Path(repo_root).resolve()
     checks: dict[str, bool] = {}
@@ -42,6 +184,23 @@ def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
             checks[key] = _core_motion_check(motion, int(sequence["num_frames"]))
         except Exception:
             checks[key] = False
+    checks["core_output_hashes"] = _run_hashes_check(root, sequence["sequence_id"])
+    checks["four_method_smoke_tests"] = _smoke_check(root, sequence["sequence_id"])
+    checks["body_models_finite_and_hashed"] = _body_models_check(root)
+    checks["source_adapters_passed"] = _source_adapters_check(root)
+    checks["artifact_hashes_valid"] = _artifact_hashes_check(root)
+    checks["rerun_visualization_complete"] = _rerun_visualization_check(
+        root, sequence["sequence_id"]
+    )
+    checks["test_evidence_complete"] = _test_evidence_check(root)
+    for document in (
+        "docs/RERUN_VISUALIZATION.md",
+        "docs/STAGE1_COMPLETION_AUDIT.md",
+    ):
+        path = root / document
+        checks[f"document_{Path(document).name}"] = bool(
+            path.is_file() and path.read_text().rstrip().endswith(FULL_LAFAN_STOP_MESSAGE)
+        )
     for case in ("box", "climb"):
         for variant in ("full", "no-hard"):
             path = root / "runs" / "interaction_manifests" / f"interaction__{case}__{variant}.json"

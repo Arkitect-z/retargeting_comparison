@@ -17,7 +17,7 @@ from .evaluator import HUMAN_SEMANTIC_JOINTS, evaluate_motion, save_evaluation
 from .io_utils import atomic_write_json, atomic_write_text, load_yaml, sha256_file
 from .robot_model import CanonicalRobotModel, default_robot_scene
 from .rotations import quaternion_wxyz_to_matrix, yaw_from_matrix
-from .schemas import CanonicalG1, CanonicalHuman, RunManifest, RunStatus
+from .schemas import CanonicalG1, CanonicalHuman, RunManifest
 
 
 CORE_LABELS = (
@@ -456,6 +456,10 @@ This Stage 1 experiment compares controlled Sparse and Dense Mink baselines, off
 
 The targeted and untracked columns are intentionally separate: a method can match hands/feet while degrading torso or limb structure. Temporal and artifact fields remain disaggregated in `metrics/runs/*_summary.json` and per-frame CSV/Parquet files. No composite score is used.
 
+## Synchronized visual inspection
+
+The rebuildable Rerun recording synchronizes the source human, all four operating points, and Sparse seeds A/B. Separate side-by-side world, overlaid world, root-frame, and Sparse-seed views expose root tracking, ground penetration, foot skating, and hidden-pose divergence. The viewer replays canonical outputs and is excluded from formal method timing; see `docs/RERUN_VISUALIZATION.md` and `manifests/rerun_visualization.json`.
+
 ## Interaction case study
 
 {interaction_table}
@@ -477,7 +481,7 @@ The runtime estimate combines steady RTF with measured cold-import and initializ
         root / "EXECUTIVE_SUMMARY.md",
         f"""# Executive Summary
 
-Stage 1 completed the four required operating points and both Full/No-Hard interaction ablations on the frozen Pilot. The fastest observed operating point was `{fastest}` and the lowest RF-KPE-all was `{best_quality}`; neither observation is a Full-LAFAN conclusion.
+Stage 1 completed the four required operating points, synchronized Rerun visual inspection, and both Full/No-Hard interaction ablations on the frozen Pilot. The fastest observed operating point was `{fastest}` and the lowest RF-KPE-all was `{best_quality}`; neither observation is a Full-LAFAN conclusion.
 
 Decision: **{outcome}**. The Stage 1 harness and evidence are usable, but the 1.5× serial Stage 2 runtime projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours, above the 48-hour limit. Storage remains within 200 GB. Before Stage 2, use repeat timing only on a frozen subset and either optimize/parallelize OmniRetarget or define and rename a deterministic reduced-LAFAN experiment.
 """,
@@ -486,7 +490,7 @@ Decision: **{outcome}**. The Stage 1 harness and evidence are usable, but the 1.
         root / "GO_NO_GO.md",
         f"""# Stage 1 Decision: {outcome}
 
-All four core methods completed 600/600 frames, all evaluator and adapter tests passed, and both interaction cases completed in Full and No-Hard form. Raw timing has the required cold/warm structure. Conditional candidates were not started because the four core points directly answer the Pilot question and candidate integration would not change the Stage 2 runtime bottleneck.
+All four core methods completed 600/600 frames, synchronized source/output visualization and expanded evaluator/adapter tests passed, and both interaction cases completed in Full and No-Hard form. Raw timing has the required cold/warm structure. Conditional candidates were not started because the four core points directly answer the Pilot question and candidate integration would not change the Stage 2 runtime bottleneck.
 
 The change required before approval is budget-related: projected serial Full-LAFAN runtime with the frozen 1.5× factor is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours. Proposed order: keep non-core candidates excluded, repeat timing on a frozen subset only, discard rebuildable intermediates, test optimized or sequence-parallel OmniRetarget execution, then use a deterministically selected and explicitly renamed reduced-LAFAN set if the runtime still exceeds 48 hours.
 """,
@@ -530,7 +534,8 @@ The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from 
 2. Run `rtcmp audit`, `rtcmp prepare-source`, and `rtcmp validate-models`.
 3. Run core methods in `manifests/experiment_order.yaml`; Sparse uses neutral, A, and B.
 4. Run `rtcmp run-interaction --case box --variant full`, repeat with `no-hard`, then repeat both variants for `climb`.
-5. Run `rtcmp build-report` (which also rebuilds `INTERACTIVE_REPORT.html`) and `rtcmp validate-stage1`.
+5. In conda env `vis`, run `rtcmp visualize-results` to build the complete synchronized Rerun recording and provenance manifest.
+6. Run `rtcmp build-report` (which also rebuilds `INTERACTIVE_REPORT.html`) and `rtcmp validate-stage1`.
 
 Every run has an atomic status manifest and immutable output hash. Existing successful output is reused; a failed retry receives a new attempt directory. Raw datasets, body models, upstream history, trajectories, logs, and caches remain ignored.
 """,
@@ -539,7 +544,7 @@ Every run has an atomic status manifest and immutable output hash. Existing succ
 
 ## 1. Decision
 
-**{outcome}** — Stage 1 evidence is complete; Stage 2 needs a runtime-budget change and explicit approval.
+**{outcome}** — required Stage 1 Pilot execution and validation are complete; Stage 2 needs a runtime-budget change and explicit approval.
 
 ## 2. Question
 
@@ -581,7 +586,11 @@ GMR and OmniRetarget run at frozen official commits in isolated subprocess envir
 
 This is one LAFAN operating point and two interaction cases. No dataset-level ranking or controller claim is made.
 
-## 12. Stage 2 budget
+## 12. Synchronized visual evidence
+
+The Rerun recording provides side-by-side world motion, world overlay, root-frame pose, Sparse seed, foot-state, and per-frame metric views for every canonical output.
+
+## 13. Stage 2 budget
 
 The 1.5× serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB. Discuss reduced-LAFAN or optimized/parallel execution before approval.
 """
@@ -615,7 +624,7 @@ def publish_manifests(root: Path) -> None:
 
 def artifact_manifest(root: Path) -> None:
     candidates = []
-    for folder in ("metrics", "figures", "manifests"):
+    for folder in ("metrics", "figures", "manifests", "docs"):
         candidates.extend(path for path in (root / folder).rglob("*") if path.is_file())
     candidates.extend(root / report for report in REPORTS)
     interactive_report = root / "INTERACTIVE_REPORT.html"

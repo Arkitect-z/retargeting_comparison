@@ -52,6 +52,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     interactive.add_argument("--repo-root", default=".")
     interactive.add_argument("--output", default="INTERACTIVE_REPORT.html")
+    visualization = sub.add_parser(
+        "visualize-results",
+        help="visualize all Stage 1 canonical results with Rerun",
+    )
+    visualization.add_argument("--repo-root", default=".")
+    visualization.add_argument("--sequence", default="manifests/pilot_sequence.yaml")
+    visualization.add_argument(
+        "--output", default="artifacts/visualization/stage1_comparison.rrd"
+    )
+    visualization.add_argument(
+        "--manifest", default="manifests/rerun_visualization.json"
+    )
+    visualization.add_argument("--spawn", action="store_true")
+    visualization.add_argument("--max-frames", type=int)
+    visualization.add_argument("--stride", type=int, default=1)
     validate = sub.add_parser("validate-stage1", help="validate Stage 1 and its hard stop")
     validate.add_argument("--repo-root", default=".")
     return parser
@@ -150,6 +165,20 @@ def main(argv: list[str] | None = None) -> int:
         from .interactive_report import build_interactive_report
 
         print(build_interactive_report(args.repo_root, args.output))
+        return 0
+    if args.command == "visualize-results":
+        from .rerun_visualization import visualize_stage1
+
+        result = visualize_stage1(
+            repo_root=args.repo_root,
+            sequence_manifest=args.sequence,
+            output=args.output,
+            manifest=args.manifest,
+            spawn=args.spawn,
+            max_frames=args.max_frames,
+            stride=args.stride,
+        )
+        print(result["output"] or "Rerun viewer spawned")
         return 0
     raise SystemExit(f"Command implementation pending: {args.command}")
 

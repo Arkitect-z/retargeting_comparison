@@ -2,7 +2,7 @@
 
 ## 1. Decision
 
-**GO WITH CHANGES** — Stage 1 evidence is complete; Stage 2 needs a runtime-budget change and explicit approval.
+**GO WITH CHANGES** — required Stage 1 Pilot execution and validation are complete; Stage 2 needs a runtime-budget change and explicit approval.
 
 ## 2. Question
 
@@ -44,7 +44,11 @@ GMR and OmniRetarget run at frozen official commits in isolated subprocess envir
 
 This is one LAFAN operating point and two interaction cases. No dataset-level ranking or controller claim is made.
 
-## 12. Stage 2 budget
+## 12. Synchronized visual evidence
+
+The Rerun recording provides side-by-side world motion, world overlay, root-frame pose, Sparse seed, foot-state, and per-frame metric views for every canonical output.
+
+## 13. Stage 2 budget
 
 The 1.5× serial projection is 67.95 h and 3.47 GB. Discuss reduced-LAFAN or optimized/parallel execution before approval.
 

@@ -79,3 +79,21 @@ def test_synthetic_joint_limit_and_invalid_frame_are_artifacts() -> None:
     assert table.loc[1, "joint_limit_violation_rad"] > 0.09
     assert bool(table.loc[1, "artifact"])
     assert bool(table.loc[2, "artifact"])
+
+
+def test_synthetic_skating_penetration_and_temporal_metrics() -> None:
+    robot = CanonicalRobotModel(default_robot_scene())
+    human, motion = _matched_pair(robot)
+    human.foot_contact_labels[:] = True
+    motion.qpos[:, 0] = [0.0, 0.02, 0.04, 0.06]
+    motion.qpos[:, 7] = [0.0, 0.1, -0.1, 0.2]
+    motion.qpos[2:, 2] -= 0.1
+    table, summary = evaluate_motion(human, motion, robot)
+    assert table.foot_skating.all()
+    assert table.ground_penetration_depth_m.max() > 0.09
+    assert table.joint_velocity_rms_rad_s.max() > 0.0
+    assert table.joint_acceleration_rms_rad_s2.max() > 0.0
+    assert table.joint_jerk_rms_rad_s3.max() > 0.0
+    assert table.pose_jump_rms_m.max() > 0.0
+    assert summary["ground_penetration_frame_rate"] > 0.0
+    assert summary["artifact_rate"] == 1.0

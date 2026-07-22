@@ -19,6 +19,10 @@ This Stage 1 experiment compares controlled Sparse and Dense Mink baselines, off
 
 The targeted and untracked columns are intentionally separate: a method can match hands/feet while degrading torso or limb structure. Temporal and artifact fields remain disaggregated in `metrics/runs/*_summary.json` and per-frame CSV/Parquet files. No composite score is used.
 
+## Synchronized visual inspection
+
+The rebuildable Rerun recording synchronizes the source human, all four operating points, and Sparse seeds A/B. Separate side-by-side world, overlaid world, root-frame, and Sparse-seed views expose root tracking, ground penetration, foot skating, and hidden-pose divergence. The viewer replays canonical outputs and is excluded from formal method timing; see `docs/RERUN_VISUALIZATION.md` and `manifests/rerun_visualization.json`.
+
 ## Interaction case study
 
 | case   | variant   |   strict_contact_2cm_frame_rate |   near_contact_5cm_frame_rate |   proximity_10cm_frame_rate |   penetration_any_frame_rate |   penetration_frame_rate |   foot_sticking_violation_frame_rate |   end_to_end_rtf |

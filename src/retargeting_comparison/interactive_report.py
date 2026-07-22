@@ -99,6 +99,9 @@ def _input_hashes(root: Path) -> list[dict[str, Any]]:
         root / "metrics" / "runs" / f"{method}_per_frame.csv"
         for method in OPERATING_POINTS
     )
+    rerun_manifest = root / "manifests" / "rerun_visualization.json"
+    if rerun_manifest.is_file():
+        paths.append(rerun_manifest)
     return [
         {
             "path": path.relative_to(root).as_posix(),
@@ -149,6 +152,11 @@ def collect_interactive_data(repo_root: str | Path = ".") -> dict[str, Any]:
         "stage2_projection_rows": projection_rows,
         "stage2_projection": _json(root / "metrics" / "stage2_projection.json"),
         "validation": _json(root / "manifests" / "stage1_validation.json"),
+        "rerun_visualization": (
+            _json(root / "manifests" / "rerun_visualization.json")
+            if (root / "manifests" / "rerun_visualization.json").is_file()
+            else None
+        ),
         "pilot": load_yaml(root / "manifests" / "pilot_sequence.yaml"),
         "dataset": load_yaml(root / "manifests" / "dataset.yaml"),
         "hardware": load_yaml(root / "manifests" / "hardware.yaml"),
@@ -163,6 +171,9 @@ def collect_interactive_data(repo_root: str | Path = ".") -> dict[str, Any]:
             "interaction": "INTERACTION_CASE_STUDY.md",
             "sparse": "SPARSE_IK_ANALYSIS.md",
             "reproduce": "REPRODUCE_PILOT.md",
+            "rerun_guide": "docs/RERUN_VISUALIZATION.md",
+            "completion_audit": "docs/STAGE1_COMPLETION_AUDIT.md",
+            "rerun_manifest": "manifests/rerun_visualization.json",
             "artifacts": "manifests/artifacts.csv",
             "core_csv": "metrics/core_summary.csv",
             "interaction_csv": "metrics/interaction_summary.csv",

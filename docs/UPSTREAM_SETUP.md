@@ -12,6 +12,10 @@ git -C external/holosoma apply ../../patches/holosoma/interaction-hard-constrain
 
 GMR runs in `robot`; Holosoma runs in `hsretargeting`; the controlled baselines and evaluator run in `capture`. Exact package versions are in `environments/environment-locks.yaml`. The launcher fixes relevant CPU thread variables to one and disables visualization.
 
+The synchronized result viewer runs separately in `vis` with Rerun. It is not
+part of formal method timing and does not import either upstream method. See
+`docs/RERUN_VISUALIZATION.md`.
+
 The Holosoma patch only makes the already-exposed `activate_obj_non_penetration` setting govern construction of its constraint block. The upstream foot-sticking block already checks `activate_foot_sticking`. `tests/test_holosoma_patch.py` protects both gates.
 
 Licensed LAFAN and SMPL/SMPL-X files remain outside Git. See `manifests/dataset.yaml` and `manifests/body_models.yaml` for hashes and formats.

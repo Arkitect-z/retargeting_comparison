@@ -1,0 +1,32 @@
+{
+  "canonical_urdf": "external/holosoma/src/holosoma/holosoma/data/robots/g1/g1_29dof.urdf",
+  "canonical_urdf_sha256": "49c8b5ccb28ffd29ba32ceac596bededf83ba5eeaf1c49f49bfcb327cfcf0c7e",
+  "frame_end_inclusive": 599,
+  "frame_start": 0,
+  "frames_logged": 600,
+  "method_outputs": {
+    "dense": "8b19e35aab03da6dc3802456e26d39ca0ff189e37d29b5018f572cf80c208e13",
+    "gmr": "01ce5cb60e5598f2cba6ed0b341c6ccbcdb622d7ce8849351058b9f360800fa7",
+    "omniretarget": "41265d21d430868a4def0d15a5023e2a349f857e147a1babd4c5804f7243abfd",
+    "sparse-a": "d0af7979f356cd44c2da2aee78d368723c37cf5516b5ee393ffc62e507334946",
+    "sparse-b": "22fba20dcfe3290cdb630cc5fb3b508d24366d39f436a04b7d96c83e01bcb463",
+    "sparse-neutral": "ad8639973c266e27fc0205867714bf2b6f412c1f3ab6aac9c95ae7d003fe73f3"
+  },
+  "methods": [
+    "sparse-neutral",
+    "dense",
+    "gmr",
+    "omniretarget",
+    "sparse-a",
+    "sparse-b"
+  ],
+  "output": "artifacts/visualization/stage1_comparison.rrd",
+  "output_sha256": "871f5425ef33d28f26dc49fb5a257557943aa8d23a83adaffc48ac70cc441ee7",
+  "output_size_bytes": 19026731,
+  "recording_id": "abb93909-40ce-6a60-c02f-b8ecbcc188d6",
+  "rerun_version": "0.34.1",
+  "schema_version": 1,
+  "sequence_id": "dance1_subject1_f000000_000600",
+  "source_sha256": "67e62e7e6e02cd54c8659fd1de9974032639e82948ebb86e2a8c82a060b7c6b5",
+  "stride": 1
+}

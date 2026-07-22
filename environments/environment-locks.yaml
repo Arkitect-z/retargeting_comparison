@@ -39,7 +39,17 @@ environments:
       tyro: 1.0.13
       viser: 1.0.27
       yourdfpy: 0.0.60
+  vis:
+    role: synchronized Stage 1 Rerun visualization
+    python: '3.11.15'
+    packages:
+      numpy: 2.4.6
+      scipy: 1.17.1
+      rerun-sdk: 0.34.1
+      trimesh: 4.12.2
+      yourdfpy: 0.0.60
 notes:
   - Upstream checkouts are imported by absolute frozen paths in fresh subprocesses.
   - RTCMP_CAPTURE_PYTHON, RTCMP_ROBOT_PYTHON, and RTCMP_HSRETARGETING_PYTHON override executable discovery.
+  - Rerun visualization uses canonical files only and does not enter formal method timing.
   - Raw environment exports may contain machine-specific editable paths and are therefore not published.

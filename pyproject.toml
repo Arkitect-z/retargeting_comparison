@@ -26,6 +26,7 @@ evaluation = [
 ]
 methods = ["mink>=0.0.8", "qpsolvers[daqp]>=4.5"]
 models = ["smplx>=0.1.28", "torch>=2.1"]
+visualization = ["rerun-sdk>=0.34"]
 dev = ["pytest>=7.4", "pytest-cov>=4.1"]
 
 [project.scripts]

@@ -13,6 +13,7 @@ def test_cli_exposes_stage1_commands() -> None:
         "run-interaction",
         "build-report",
         "build-interactive-report",
+        "visualize-results",
         "validate-stage1",
     ):
         assert command in parser.format_help()

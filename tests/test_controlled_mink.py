@@ -20,7 +20,9 @@ pytestmark = pytest.mark.skipif(
 
 def test_sparse_dense_only_vary_declared_target_set() -> None:
     config = load_yaml("configs/controlled_mink.yaml")
-    assert common_baseline_config(config) == common_baseline_config(config)
+    common = common_baseline_config(config)
+    assert common == config["common"]
+    assert "target_sets" not in common
     sparse = config["target_sets"]["sparse"]
     dense = config["target_sets"]["dense"]
     assert sparse == [target for target in dense if target["semantic"] in {

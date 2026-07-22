@@ -1,12 +1,18 @@
 {
   "checks": {
+    "artifact_hashes_valid": true,
     "artifact_manifest_present": true,
+    "body_models_finite_and_hashed": true,
     "core_dense": true,
     "core_gmr": true,
     "core_omniretarget": true,
+    "core_output_hashes": true,
     "core_sparse-a": true,
     "core_sparse-b": true,
     "core_sparse-neutral": true,
+    "document_RERUN_VISUALIZATION.md": true,
+    "document_STAGE1_COMPLETION_AUDIT.md": true,
+    "four_method_smoke_tests": true,
     "full_lafan_not_authorized": true,
     "interaction_box_full": true,
     "interaction_box_no-hard": true,
@@ -21,7 +27,10 @@
     "report_PILOT_REPORT.md": true,
     "report_PRESENTATION.md": true,
     "report_REPRODUCE_PILOT.md": true,
-    "report_SPARSE_IK_ANALYSIS.md": true
+    "report_SPARSE_IK_ANALYSIS.md": true,
+    "rerun_visualization_complete": true,
+    "source_adapters_passed": true,
+    "test_evidence_complete": true
   },
   "decision": "GO WITH CHANGES",
   "hard_stop_message": "FULL-LAFAN EXPERIMENTS NOT STARTED \u2014 WAITING FOR USER APPROVAL.",
