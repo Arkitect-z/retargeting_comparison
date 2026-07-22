@@ -198,7 +198,11 @@ def _timing_summary(
     cold = cold_worker["repetitions"][0]
     warm = [item for item in warm_worker["repetitions"] if item["role"] == "measured"]
     warmup = [item for item in warm_worker["repetitions"] if item["role"] == "warmup"]
-    e2e_rtf = [item["wall_time_s"] / (item["frame_count"] / fps) for item in warm]
+    e2e_rtf = [
+        item.get("steady_end_to_end_total_s", item["wall_time_s"])
+        / (item["frame_count"] / fps)
+        for item in warm
+    ]
     native_rtf = [item["native_total_s"] / (item["frame_count"] / fps) for item in warm]
     return {
         "protocol": {
@@ -221,6 +225,7 @@ def _timing_summary(
         "initialization_and_adapter_s_cold": max(
             0.0, cold["wall_time_s"] - cold["native_total_s"]
         ),
+        "initialization_time_s_raw": [item.get("initialization_time_s") for item in warm],
     }
 
 
@@ -355,3 +360,72 @@ def run_method(
     manifest.message = "Existing successful artifacts are immutable; reruns create a new attempt"
     manifest.save(manifest_path)
     return manifest
+
+
+def refresh_method_timing(
+    method: str,
+    sequence_manifest: str | Path,
+    repo_root: str | Path = ".",
+    seed: str = "neutral",
+) -> Path:
+    """Create a new immutable timing revision with initialization separated."""
+    root = Path(repo_root).resolve()
+    method = "omniretarget" if method == "holosoma" else method
+    sequence_path = Path(sequence_manifest)
+    if not sequence_path.is_absolute():
+        sequence_path = root / sequence_path
+    sequence = load_yaml(sequence_path)
+    canonical_source = root / sequence["canonical_path"]
+    native_source = root / sequence["cropped_source_file"]
+    label = _variant_label(method, seed)
+    base_dir = root / "runs" / sequence["sequence_id"] / label
+    revision = base_dir / "timing_refined"
+    output_path = base_dir / "timing_refined.json"
+    if output_path.is_file():
+        return output_path
+    python = _conda_python(METHOD_ENVIRONMENTS[method])
+    cold_output = revision / "cold" / "canonical_g1.npz"
+    warm_output = revision / "warm" / "canonical_g1.npz"
+    cold_worker = revision / "cold" / "worker_timing.json"
+    warm_worker = revision / "warm" / "worker_timing.json"
+    cold_command = _worker_command(
+        python, method, root, canonical_source, native_source, cold_output,
+        revision / "cold" / "work", cold_worker, seed, 0, 1, None
+    )
+    warm_command = _worker_command(
+        python, method, root, canonical_source, native_source, warm_output,
+        revision / "warm" / "work", warm_worker, seed, 1, 3, None
+    )
+    cold_code, cold_wall = _run_worker(
+        cold_command, root, revision / "logs" / "cold.stdout.log", revision / "logs" / "cold.stderr.log"
+    )
+    if cold_code:
+        raise RuntimeError(f"Refined cold timing failed for {label}")
+    warm_code, warm_wall = _run_worker(
+        warm_command, root, revision / "logs" / "warm.stdout.log", revision / "logs" / "warm.stderr.log"
+    )
+    if warm_code:
+        raise RuntimeError(f"Refined warm timing failed for {label}")
+    motion = CanonicalG1.load(warm_output)
+    quality_motion = CanonicalG1.load(base_dir / "canonical_g1.npz")
+    if not np.allclose(motion.qpos, quality_motion.qpos, atol=1e-10, rtol=0.0):
+        raise RuntimeError(f"Refined timing changed deterministic qpos for {label}")
+    timing = _timing_summary(
+        json.loads(cold_worker.read_text()),
+        json.loads(warm_worker.read_text()),
+        cold_wall,
+        warm_wall,
+        motion.fps,
+    )
+    timing.update(
+        {
+            "method": label,
+            "timing_revision": "initialization-separated-v2",
+            "repo_commit": _git(root, "rev-parse", "HEAD"),
+            "quality_output_sha256": sha256_file(base_dir / "canonical_g1.npz"),
+            "prior_timing_sha256": sha256_file(base_dir / "timing.json"),
+            "quality_qpos_reproduced": True,
+        }
+    )
+    atomic_write_json(output_path, timing)
+    return output_path

@@ -58,6 +58,7 @@ def run_gmr(
         from general_motion_retargeting.motion_retarget import GeneralMotionRetargeting
         from general_motion_retargeting.utils.lafan1 import load_bvh_file
 
+        initialization_start = time.perf_counter()
         human = CanonicalHuman.load(canonical_source)
         frames, human_height = load_bvh_file(str(source_bvh), format="lafan1")
         count = len(frames) if max_frames is None else min(max_frames, len(frames))
@@ -69,6 +70,7 @@ def run_gmr(
             damping=0.5,
             verbose=False,
         )
+        initialization_time = time.perf_counter() - initialization_start
         qpos: list[np.ndarray] = []
         solve_times: list[float] = []
         for frame in frames[:count]:
@@ -99,6 +101,8 @@ def run_gmr(
                 "robot_xml_sha256": sha256_file(xml_path),
                 "adapter_changes": "headless I/O, provenance, and per-frame timing only",
                 "quaternion_order": "wxyz",
+                "initialization_time_s": initialization_time,
+                "steady_end_to_end_total_s": float(sum(solve_times[: len(qpos)])),
             },
         )
     finally:
@@ -181,7 +185,9 @@ def run_holosoma(
         save_dir.mkdir(parents=True, exist_ok=True)
 
         frame_times: list[float] = []
+        steady_times: list[float] = []
         original_iterate = InteractionMeshRetargeter.iterate
+        original_retarget_motion = InteractionMeshRetargeter.retarget_motion
 
         def timed_iterate(self, *args, **kwargs):
             start = time.perf_counter()
@@ -189,7 +195,14 @@ def run_holosoma(
             frame_times.append(time.perf_counter() - start)
             return result
 
+        def timed_retarget_motion(self, *args, **kwargs):
+            start = time.perf_counter()
+            result = original_retarget_motion(self, *args, **kwargs)
+            steady_times.append(time.perf_counter() - start)
+            return result
+
         InteractionMeshRetargeter.iterate = timed_iterate
+        InteractionMeshRetargeter.retarget_motion = timed_retarget_motion
         cfg = RetargetingConfig(
             task_type="robot_only",
             robot="g1",
@@ -202,9 +215,12 @@ def run_holosoma(
         )
         os.chdir(package_root / "holosoma_retargeting")
         try:
+            main_start = time.perf_counter()
             robot_retarget.main(cfg)
         finally:
             InteractionMeshRetargeter.iterate = original_iterate
+            InteractionMeshRetargeter.retarget_motion = original_retarget_motion
+        main_wall = time.perf_counter() - main_start
         native_output = save_dir / f"{task_name}.npz"
         with np.load(native_output, allow_pickle=False) as data:
             qpos = np.asarray(data["qpos"], dtype=np.float64)
@@ -212,6 +228,8 @@ def run_holosoma(
             raise ValueError(f"Holosoma Pilot output has width {qpos.shape[1]}, expected 36")
         if len(frame_times) != len(qpos):
             raise RuntimeError("Holosoma timing adapter did not observe exactly one solve per frame")
+        if len(steady_times) != 1:
+            raise RuntimeError("Holosoma timing adapter did not observe one sequence loop")
         return CanonicalG1(
             qpos=qpos,
             fps=human.fps,
@@ -229,6 +247,8 @@ def run_holosoma(
                 "native_adapter_roundtrip_max_m": 0.0,
                 "adapter_changes": "input/output, provenance, and per-frame timing only",
                 "quaternion_order": "wxyz",
+                "initialization_time_s": max(0.0, main_wall - steady_times[0]),
+                "steady_end_to_end_total_s": steady_times[0],
             },
         )
     finally:

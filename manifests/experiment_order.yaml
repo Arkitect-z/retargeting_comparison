@@ -1,0 +1,9 @@
+generated_before_formal_runs: true
+randomization_seed: 20260722
+core_method_order: [dense, sparse, omniretarget, gmr]
+sparse_seed_order: [neutral, A, B]
+timing_protocol:
+  cold_processes: 1
+  warmup_runs: 1
+  measured_warm_runs: 3
+full_lafan_authorized: false

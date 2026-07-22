@@ -50,6 +50,7 @@ class ControlledMinkRetargeter:
         seed_name: str = "neutral",
         config_path: str | Path = "configs/controlled_mink.yaml",
     ):
+        initialization_start = time.perf_counter()
         if variant not in {"sparse", "dense"}:
             raise ValueError("Controlled baseline must be 'sparse' or 'dense'")
         self.repo_root = Path(repo_root).resolve()
@@ -89,6 +90,7 @@ class ControlledMinkRetargeter:
         self.posture.set_target_from_configuration(self.configuration)
         self.tasks.append(self.posture)
         self.limits = [mink.ConfigurationLimit(self.model)]
+        self.initialization_time_s = time.perf_counter() - initialization_start
 
     def _target_position(
         self, human: CanonicalHuman, frame: int, joint_index: int, scale_group: str
@@ -124,9 +126,11 @@ class ControlledMinkRetargeter:
         frames = len(human.timestamps) if max_frames is None else min(max_frames, len(human.timestamps))
         qpos: list[np.ndarray] = []
         solve_times: list[float] = []
+        end_to_end_times: list[float] = []
         common = self.config["common"]
         dt = self.model.opt.timestep
         for frame in range(frames):
+            frame_start = time.perf_counter()
             self._set_targets(human, frame, indices)
             start = time.perf_counter()
             current_error = float(
@@ -174,6 +178,7 @@ class ControlledMinkRetargeter:
             if not np.isfinite(value).all():
                 break
             qpos.append(value)
+            end_to_end_times.append(time.perf_counter() - frame_start)
         if not qpos:
             raise RuntimeError("Controlled Mink produced no valid frames")
         completion = "succeeded" if len(qpos) / len(human.timestamps) >= 0.95 else "incomplete"
@@ -194,6 +199,8 @@ class ControlledMinkRetargeter:
                 "config_sha256": sha256_file(self.config_path),
                 "sequential_warm_start": True,
                 "orientation_targets": ["root_yaw"],
+                "initialization_time_s": self.initialization_time_s,
+                "steady_end_to_end_total_s": float(sum(end_to_end_times)),
             },
         )
 

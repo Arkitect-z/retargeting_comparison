@@ -76,6 +76,12 @@ def main(argv: list[str] | None = None) -> int:
                 "native_frame_times_s": motion.per_frame_solve_time_s.tolist(),
                 "native_total_s": float(motion.per_frame_solve_time_s.sum()),
                 "native_median_frame_s": float(np.median(motion.per_frame_solve_time_s)),
+                "steady_end_to_end_total_s": float(
+                    motion.metadata.get(
+                        "steady_end_to_end_total_s", motion.per_frame_solve_time_s.sum()
+                    )
+                ),
+                "initialization_time_s": float(motion.metadata.get("initialization_time_s", 0.0)),
             }
         )
         if role == "measured":

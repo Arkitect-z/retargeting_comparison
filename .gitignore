@@ -5,13 +5,13 @@ external/
 .external/
 
 # Generated experiment artifacts
-artifacts/
+/artifacts/
 canonical/
 source/canonical_human/*.npz
 source_adapters/
-runs/
+/runs/
 videos/
-logs/
+/logs/
 
 # Environments and caches
 .venv/
@@ -40,4 +40,3 @@ build/
 *.ckpt
 *.onnx
 *.zip
-

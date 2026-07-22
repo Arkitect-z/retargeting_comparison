@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_method.add_argument("--seed", choices=("neutral", "A", "B"), default="neutral")
     run_method.add_argument("--max-frames", type=int)
     run_method.add_argument("--repo-root", default=".")
+    run_method.add_argument("--refresh-timing", action="store_true")
     evaluate = sub.add_parser("evaluate", help="evaluate one canonical run")
     evaluate.add_argument("--run", required=True)
     evaluate.add_argument("--source")
@@ -42,8 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
     interaction = sub.add_parser("run-interaction", help="run an interaction ablation")
     interaction.add_argument("--case", choices=("box", "climb"), required=True)
     interaction.add_argument("--variant", choices=("full", "no-hard"), required=True)
-    sub.add_parser("build-report", help="build Stage 1 figures and Markdown reports")
-    sub.add_parser("validate-stage1", help="validate Stage 1 and its hard stop")
+    interaction.add_argument("--repo-root", default=".")
+    report = sub.add_parser("build-report", help="build Stage 1 figures and Markdown reports")
+    report.add_argument("--repo-root", default=".")
+    validate = sub.add_parser("validate-stage1", help="validate Stage 1 and its hard stop")
+    validate.add_argument("--repo-root", default=".")
     return parser
 
 
@@ -93,10 +97,18 @@ def main(argv: list[str] | None = None) -> int:
         human = CanonicalHuman.load(source_path)
         robot = CanonicalRobotModel(args.robot_xml or default_robot_scene())
         table, summary = evaluate_motion(human, motion, robot)
-        save_evaluation(table, summary, args.output_dir, run_path.stem)
+        run_id = str(motion.metadata.get("method") or run_path.parent.name).replace("/", "-")
+        save_evaluation(table, summary, args.output_dir, run_id)
         return 0
     if args.command == "run-method":
-        from .runner import run_method
+        from .runner import refresh_method_timing, run_method
+
+        if args.refresh_timing:
+            path = refresh_method_timing(
+                args.method, args.sequence, repo_root=args.repo_root, seed=args.seed
+            )
+            print(path)
+            return 0
 
         manifest = run_method(
             args.method,
@@ -109,8 +121,24 @@ def main(argv: list[str] | None = None) -> int:
         from .schemas import RunStatus
 
         return 0 if manifest.status in {RunStatus.SUCCEEDED, RunStatus.INCOMPLETE} else 1
+    if args.command == "run-interaction":
+        from .interaction import run_interaction
+        from .schemas import RunStatus
+
+        manifest = run_interaction(args.case, args.variant, args.repo_root)
+        print(f"{manifest.run_id}: {manifest.status.value}")
+        return 0 if manifest.status == RunStatus.SUCCEEDED else 1
     if args.command == "validate-stage1":
+        from .validation import validate_stage1
+
+        result = validate_stage1(args.repo_root)
+        print(result["decision"])
         print(FULL_LAFAN_STOP_MESSAGE)
+        return 0 if result["decision"] in {"GO", "GO WITH CHANGES"} else 1
+    if args.command == "build-report":
+        from .reporting import build_report
+
+        build_report(args.repo_root)
         return 0
     raise SystemExit(f"Command implementation pending: {args.command}")
 
