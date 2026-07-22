@@ -1,0 +1,17 @@
+{
+  "lafan_duration_hours": 4.598814814814815,
+  "lafan_frames": 496672,
+  "lafan_sequences": 77,
+  "recommendation": "Full-LAFAN remains gated; use a deterministically named reduced-LAFAN design or optimize/parallelize OmniRetarget before approval.",
+  "retained_pilot_artifact_bytes": 2794435,
+  "retry_rate_observed": 0.0,
+  "runtime_safety_factor": 1.5,
+  "safe_projected_storage_gb": 3.469794050799999,
+  "safe_projected_wall_hours_serial": 67.95170601275963,
+  "startup_and_adapter_assumed_per_sequence": true,
+  "storage_budget_gb": 200,
+  "storage_excludes_rebuildable_logs_and_timing_worker_trajectories": true,
+  "wall_budget_hours": 48,
+  "within_storage_budget": true,
+  "within_wall_budget": false
+}

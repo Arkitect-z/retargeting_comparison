@@ -1,0 +1,33 @@
+{
+  "command": [
+    "${RTCMP_HSRETARGETING_PYTHON}",
+    "-m",
+    "retargeting_comparison.interaction_worker",
+    "--repo-root",
+    ".",
+    "--case",
+    "climb",
+    "--variant",
+    "full",
+    "--output-dir",
+    "./runs/interaction/climb/full"
+  ],
+  "config_sha256": "4847ada0fa4f7fca330693dd1ecf3537b679c2c45135990796da75cfd1646cd7",
+  "device": "CPU; threads=1",
+  "environment": "conda:hsretargeting",
+  "exit_code": 0,
+  "finished_at": "2026-07-22T12:45:49.644546+00:00",
+  "message": null,
+  "method": "interaction-climb-full",
+  "output_path": "./runs/interaction/climb/full/summary.json",
+  "output_sha256": "731cdb244d8ce60954e76213a70fff79359d04c5e01eb37760539088860136d9",
+  "repo_commit": "f01c9c028017e89f21c03f4e17e7dc426417a8f2",
+  "run_id": "interaction__climb__full",
+  "source_sha256": null,
+  "started_at": "2026-07-22T12:41:16.865667+00:00",
+  "status": "succeeded",
+  "stderr_log": "./runs/interaction/climb/full/logs/stderr.log",
+  "stdout_log": "./runs/interaction/climb/full/logs/stdout.log",
+  "timing_path": null,
+  "wall_time_s": 272.76351530698594
+}

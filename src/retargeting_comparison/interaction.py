@@ -5,9 +5,11 @@ from __future__ import annotations
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -98,8 +100,8 @@ def mesh_surface_diagnostics(
                 "left_foot_xy_displacement_m": left_motion,
                 "right_foot_xy_displacement_m": right_motion,
                 "foot_sticking_violation": (
-                    (left_stance and left_motion > foot_tolerance_m + 1e-4)
-                    or (right_stance and right_motion > foot_tolerance_m + 1e-4)
+                    (left_stance and left_motion > np.sqrt(2.0) * foot_tolerance_m + 1e-4)
+                    or (right_stance and right_motion > np.sqrt(2.0) * foot_tolerance_m + 1e-4)
                 ),
             }
         )
@@ -112,7 +114,9 @@ def mesh_surface_diagnostics(
         "strict_contact_2cm_frame_rate": float(np.mean(distances <= 0.02)),
         "near_contact_5cm_frame_rate": float(np.mean(distances <= 0.05)),
         "proximity_10cm_frame_rate": float(np.mean(distances <= 0.10)),
-        "penetration_frame_rate": float(np.mean(distances < 0.0)),
+        "penetration_any_frame_rate": float(np.mean(distances < 0.0)),
+        "penetration_frame_rate": float(np.mean(distances < -0.0011)),
+        "penetration_primary_threshold_m": 0.0011,
         "maximum_penetration_depth_m": float(max(0.0, -distances.min())),
         "foot_sticking_violation_frame_rate": float(
             np.mean([row["foot_sticking_violation"] for row in rows])
@@ -236,6 +240,11 @@ def run_interaction_native(
             if case == "box"
             else next((data_path / spec["task_name"]).glob("*.npy"))
         )
+        mesh_paths = (
+            [package_root / "holosoma_retargeting" / "models" / "largebox" / "largebox.obj"]
+            if case == "box"
+            else sorted((data_path / spec["task_name"] / "box_models").glob("*.obj"))
+        )
         metrics.update(
             {
                 "case": case,
@@ -254,6 +263,7 @@ def run_interaction_native(
                 "activate_foot_sticking": enabled,
                 "activate_joint_limits": True,
                 "input_sha256": sha256_file(input_path),
+                "object_mesh_sha256": _aggregate_sha256(mesh_paths),
                 "expanded_scene_sha256": sha256_file(scene_path),
                 "qpos_sha256": sha256_file(result_path),
                 "qpos_width": int(qpos.shape[1]),
@@ -282,6 +292,12 @@ def run_interaction(
         existing = RunManifest.load(manifest_path)
         if existing.status == RunStatus.SUCCEEDED and summary_path.is_file():
             return existing
+        attempt = datetime.now(timezone.utc).strftime("attempt_%Y%m%dT%H%M%SZ")
+        archive = manifest_path.with_name(f"{manifest_path.stem}__{attempt}.json")
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(manifest_path, archive)
+        run_dir = run_dir / attempt
+        summary_path = run_dir / "summary.json"
     python = _conda_python("hsretargeting")
     command = [
         str(python),

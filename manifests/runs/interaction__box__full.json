@@ -1,0 +1,33 @@
+{
+  "command": [
+    "${RTCMP_HSRETARGETING_PYTHON}",
+    "-m",
+    "retargeting_comparison.interaction_worker",
+    "--repo-root",
+    ".",
+    "--case",
+    "box",
+    "--variant",
+    "full",
+    "--output-dir",
+    "./runs/interaction/box/full"
+  ],
+  "config_sha256": "4847ada0fa4f7fca330693dd1ecf3537b679c2c45135990796da75cfd1646cd7",
+  "device": "CPU; threads=1",
+  "environment": "conda:hsretargeting",
+  "exit_code": 0,
+  "finished_at": "2026-07-22T12:38:49.386765+00:00",
+  "message": null,
+  "method": "interaction-box-full",
+  "output_path": "./runs/interaction/box/full/summary.json",
+  "output_sha256": "1c74e666b843f0f55b25c7bbb49d1f0bbb22f76d4104e66b4d86fd61358a2a4a",
+  "repo_commit": "f01c9c028017e89f21c03f4e17e7dc426417a8f2",
+  "run_id": "interaction__box__full",
+  "source_sha256": null,
+  "started_at": "2026-07-22T12:36:03.465613+00:00",
+  "status": "succeeded",
+  "stderr_log": "./runs/interaction/box/full/logs/stderr.log",
+  "stdout_log": "./runs/interaction/box/full/logs/stdout.log",
+  "timing_path": null,
+  "wall_time_s": 165.90620489799767
+}

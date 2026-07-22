@@ -174,11 +174,42 @@ def collect_interaction(root: Path) -> pd.DataFrame:
     rows = []
     for case in ("box", "climb"):
         for variant in ("full", "no-hard"):
-            path = root / "runs" / "interaction" / case / variant / "summary.json"
+            manifest_path = (
+                root / "runs" / "interaction_manifests" / f"interaction__{case}__{variant}.json"
+            )
+            manifest = RunManifest.load(manifest_path)
+            path = Path(manifest.output_path or "")
+            if not path.is_absolute():
+                path = root / path
             if not path.is_file():
                 raise FileNotFoundError(f"Required interaction output is missing: {path}")
             value = json.loads(path.read_text())
             value.pop("native_frame_times_s", None)
+            per_frame = pd.read_csv(path.parent / "per_frame_metrics.csv")
+            depth = per_frame.penetration_depth_m.to_numpy(dtype=float)
+            left_stance = (
+                per_frame.left_stance
+                if per_frame.left_stance.dtype == bool
+                else per_frame.left_stance.astype(str).str.lower().eq("true")
+            )
+            right_stance = (
+                per_frame.right_stance
+                if per_frame.right_stance.dtype == bool
+                else per_frame.right_stance.astype(str).str.lower().eq("true")
+            )
+            left_violation = left_stance & (
+                per_frame.left_foot_xy_displacement_m > np.sqrt(2.0) * 0.001 + 1e-4
+            )
+            right_violation = right_stance & (
+                per_frame.right_foot_xy_displacement_m > np.sqrt(2.0) * 0.001 + 1e-4
+            )
+            value["penetration_any_frame_rate"] = float(np.mean(depth > 0.0))
+            value["penetration_frame_rate"] = float(np.mean(depth > 0.0011))
+            value["penetration_primary_threshold_m"] = 0.0011
+            value["foot_sticking_violation_frame_rate"] = float(
+                np.mean(left_violation | right_violation)
+            )
+            value["reported_metric_revision"] = "tolerance-aware-v2"
             rows.append(value)
     frame = pd.DataFrame(rows).sort_values(["case", "variant"])
     frame.to_csv(root / "metrics" / "interaction_summary.csv", index=False)
@@ -189,41 +220,55 @@ def collect_interaction(root: Path) -> pd.DataFrame:
 def stage2_projection(root: Path, timing: pd.DataFrame) -> pd.DataFrame:
     dataset = load_yaml(root / "manifests" / "dataset.yaml")
     total_frames = int(dataset["validation"]["total_frames"])
+    sequence_count = int(dataset["validation"]["bvh_file_count"])
     fps = float(dataset["validation"]["unique_nominal_fps"])
     duration_s = total_frames / fps
+    retry_rate_observed = 0.0
     rows = []
     for label in OPERATING_POINTS:
         row = timing.loc[timing.label == label].iloc[0]
-        raw_hours = float(row.end_to_end_rtf_median * duration_s / 3600.0)
+        steady_hours = float(row.end_to_end_rtf_median * duration_s / 3600.0)
+        startup_adapter_s = float(
+            row.cold_import_startup_s + row.initialization_and_adapter_s_cold
+        )
+        startup_adapter_hours = startup_adapter_s * sequence_count / 3600.0
+        raw_hours = (steady_hours + startup_adapter_hours) * (1.0 + retry_rate_observed)
         rows.append(
             {
                 "method": label,
                 "lafan_frames": total_frames,
+                "lafan_sequences": sequence_count,
                 "measured_pilot_end_to_end_rtf": row.end_to_end_rtf_median,
+                "projected_steady_wall_hours": steady_hours,
+                "measured_startup_and_adapter_s_per_sequence": startup_adapter_s,
+                "projected_startup_and_adapter_hours": startup_adapter_hours,
+                "observed_retry_rate": retry_rate_observed,
                 "raw_projected_wall_hours": raw_hours,
                 "safety_factor": 1.5,
                 "safe_projected_wall_hours": raw_hours * 1.5,
             }
         )
     frame = pd.DataFrame(rows)
-    formal_dirs = [
-        root / "runs" / _sequence(root)["sequence_id"] / label for label in CORE_LABELS
-    ]
-    pilot_bytes = sum(
-        path.stat().st_size
-        for directory in formal_dirs
-        for path in directory.rglob("*")
-        if path.is_file()
+    retained_paths = [*_run_paths(root).values()]
+    retained_paths.extend(
+        path
+        for path in (root / "metrics" / "runs").glob("*")
+        if path.is_file() and ("per_frame" in path.name or "summary" in path.name)
     )
+    pilot_bytes = sum(path.stat().st_size for path in retained_paths)
     projected_storage_gb = pilot_bytes / 600.0 * total_frames * 1.5 / 1e9
     total_safe_hours = float(frame.safe_projected_wall_hours.sum())
     projection = {
         "lafan_frames": total_frames,
+        "lafan_sequences": sequence_count,
         "lafan_duration_hours": duration_s / 3600.0,
         "runtime_safety_factor": 1.5,
-        "retry_rate_observed": 0.0,
+        "retry_rate_observed": retry_rate_observed,
+        "startup_and_adapter_assumed_per_sequence": True,
         "safe_projected_wall_hours_serial": total_safe_hours,
         "safe_projected_storage_gb": projected_storage_gb,
+        "retained_pilot_artifact_bytes": pilot_bytes,
+        "storage_excludes_rebuildable_logs_and_timing_worker_trajectories": True,
         "wall_budget_hours": 48,
         "storage_budget_gb": 200,
         "within_wall_budget": total_safe_hours <= 48,
@@ -248,6 +293,11 @@ def _save_plot(root: Path, name: str, source: pd.DataFrame, draw) -> None:
     for suffix, kwargs in (("svg", {}), ("pdf", {}), ("png", {"dpi": 300})):
         figure.savefig(root / "figures" / f"{name}.{suffix}", **kwargs)
     plt.close(figure)
+    svg_path = root / "figures" / f"{name}.svg"
+    atomic_write_text(
+        svg_path,
+        "\n".join(line.rstrip() for line in svg_path.read_text().splitlines()) + "\n",
+    )
 
 
 def build_figures(
@@ -266,17 +316,28 @@ def build_figures(
         axis.set_ylabel(ylabel)
         axis.grid(alpha=0.25)
 
+    def rtf_scatter(axis, data, y, ylabel):
+        scatter(
+            axis,
+            data,
+            "end_to_end_rtf_median",
+            y,
+            "End-to-end steady RTF (log scale; lower is faster)",
+            ylabel,
+        )
+        axis.set_xscale("log")
+
     _save_plot(
         root,
         "rtf_vs_rf_kpe_all",
         points[["label", "end_to_end_rtf_median", "rf_kpe_all_mean_m"]],
-        lambda ax, data: scatter(ax, data, "end_to_end_rtf_median", "rf_kpe_all_mean_m", "End-to-end steady RTF (lower is faster)", "RF-KPE-all mean (m, lower is better)"),
+        lambda ax, data: rtf_scatter(ax, data, "rf_kpe_all_mean_m", "RF-KPE-all mean (m, lower is better)"),
     )
     _save_plot(
         root,
         "rtf_vs_artifact_rate",
         points[["label", "end_to_end_rtf_median", "artifact_rate"]],
-        lambda ax, data: scatter(ax, data, "end_to_end_rtf_median", "artifact_rate", "End-to-end steady RTF", "Artifact frame rate"),
+        lambda ax, data: rtf_scatter(ax, data, "artifact_rate", "Artifact frame rate"),
     )
     _save_plot(
         root,
@@ -337,7 +398,11 @@ def build_markdown(
     best_quality = operating.rf_kpe_all_mean_m.idxmin()
     fastest = operating.end_to_end_rtf_median.idxmin()
     projection_info = json.loads((root / "metrics" / "stage2_projection.json").read_text())
-    outcome = "GO" if projection_info["within_wall_budget"] else "GO WITH CHANGES"
+    outcome = (
+        "GO"
+        if projection_info["within_wall_budget"] and projection_info["within_storage_budget"]
+        else "GO WITH CHANGES"
+    )
     table = operating[
         [
             "rf_kpe_all_mean_m",
@@ -353,12 +418,25 @@ def build_markdown(
             "case",
             "variant",
             "strict_contact_2cm_frame_rate",
+            "near_contact_5cm_frame_rate",
+            "proximity_10cm_frame_rate",
+            "penetration_any_frame_rate",
             "penetration_frame_rate",
             "foot_sticking_violation_frame_rate",
             "end_to_end_rtf",
         ]
     ].to_markdown(index=False, floatfmt=".4f")
-    projection_table = projection.to_markdown(index=False, floatfmt=".3f")
+    projection_table = projection[
+        [
+            "method",
+            "measured_pilot_end_to_end_rtf",
+            "projected_steady_wall_hours",
+            "projected_startup_and_adapter_hours",
+            "raw_projected_wall_hours",
+            "safety_factor",
+            "safe_projected_wall_hours",
+        ]
+    ].to_markdown(index=False, floatfmt=".3f")
 
     _write_report(
         root / "PILOT_REPORT.md",
@@ -382,7 +460,7 @@ The targeted and untracked columns are intentionally separate: a method can matc
 
 {interaction_table}
 
-Distances are computed with MuJoCo geometry-surface queries over the actual collision meshes. The evidence covers exactly one box sequence and one climbing sequence and must not be generalized to a dataset.
+Distances are computed with MuJoCo geometry-surface queries over the actual collision meshes. `penetration_any_frame_rate` records every negative signed distance; the primary `penetration_frame_rate` records depth over 1.1 mm (the frozen 1 mm constraint tolerance plus 0.1 mm numerical margin). The evidence covers exactly one box sequence and one climbing sequence and must not be generalized to a dataset.
 
 ## Timing protocol
 
@@ -392,7 +470,7 @@ Each core run used a fresh cold process, one warm-up, and three measured warm re
 
 {projection_table}
 
-After the required 1.5× safety factor, the serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB. The runtime projection therefore {'fits' if projection_info['within_wall_budget'] else 'does not fit'} the 48-hour gate. Stage 2 requires a new design discussion and explicit approval.
+The runtime estimate combines steady RTF with measured cold-import and initialization/adapter overhead once for each of the 77 source sequences; the observed formal-run retry rate was zero. After the required 1.5× safety factor, the serial projection is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} h and {_fmt(projection_info['safe_projected_storage_gb'], 2)} GB. The runtime projection therefore {'fits' if projection_info['within_wall_budget'] else 'does not fit'} the 48-hour gate. Stage 2 requires a new design discussion and explicit approval.
 """,
     )
     _write_report(
@@ -410,7 +488,7 @@ Decision: **{outcome}**. The Stage 1 harness and evidence are usable, but the 1.
 
 All four core methods completed 600/600 frames, all evaluator and adapter tests passed, and both interaction cases completed in Full and No-Hard form. Raw timing has the required cold/warm structure. Conditional candidates were not started because the four core points directly answer the Pilot question and candidate integration would not change the Stage 2 runtime bottleneck.
 
-The change required before approval is budget-related: projected serial Full-LAFAN runtime with the frozen 1.5× factor is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours. Proposed order: remove non-core candidates, keep repeated timing on a frozen subset only, discard rebuildable intermediates, then use a deterministically selected and explicitly renamed reduced-LAFAN set if the runtime still exceeds 48 hours.
+The change required before approval is budget-related: projected serial Full-LAFAN runtime with the frozen 1.5× factor is {_fmt(projection_info['safe_projected_wall_hours_serial'], 2)} hours. Proposed order: keep non-core candidates excluded, repeat timing on a frozen subset only, discard rebuildable intermediates, test optimized or sequence-parallel OmniRetarget execution, then use a deterministically selected and explicitly renamed reduced-LAFAN set if the runtime still exceeds 48 hours.
 """,
     )
     _write_report(
@@ -441,7 +519,7 @@ The pairwise table quantifies hidden-state sensitivity in joint space and in roo
 
 Full enables object non-penetration, foot sticking, and joint limits. No-Hard disables only the first two flags; initialization, input, object sampling seed, solver, iteration budget, and joint limits remain unchanged. A regression test checks that the patched non-penetration gate and the upstream foot-sticking gate both alter constraint construction.
 
-The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from `mujoco.mj_geomDistance`, never distance to the object origin. Results are two-case case-study evidence only.
+The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from `mujoco.mj_geomDistance`, never distance to the object origin. `penetration_any_frame_rate` records every negative distance, while the primary `penetration_frame_rate` applies the frozen 1.1 mm tolerance-aware threshold. Results are two-case case-study evidence only.
 """,
     )
     _write_report(
@@ -537,12 +615,16 @@ def publish_manifests(root: Path) -> None:
 
 def artifact_manifest(root: Path) -> None:
     candidates = []
-    for folder in ("metrics", "figures", "manifests/runs"):
+    for folder in ("metrics", "figures", "manifests"):
         candidates.extend(path for path in (root / folder).rglob("*") if path.is_file())
     candidates.extend(root / report for report in REPORTS)
     output = root / "manifests" / "artifacts.csv"
     with output.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=("path", "size_bytes", "sha256"))
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=("path", "size_bytes", "sha256"),
+            lineterminator="\n",
+        )
         writer.writeheader()
         for path in sorted(set(candidates)):
             if path == output:

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -266,6 +267,9 @@ def run_method(
         ):
             return existing
         attempt = datetime.now(timezone.utc).strftime("attempt_%Y%m%dT%H%M%SZ")
+        archived = manifest_path.with_name(f"{manifest_path.stem}__{attempt}.json")
+        archived.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(manifest_path, archived)
         run_dir = run_dir / attempt
     output = run_dir / "canonical_g1.npz"
     timing_path = run_dir / "timing.json"

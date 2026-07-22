@@ -22,7 +22,7 @@ rtcmp --help
 pytest
 ```
 
-See `pilot/REPRODUCE_PILOT.md` after the Stage 1 run for frozen commands and
+See [`REPRODUCE_PILOT.md`](REPRODUCE_PILOT.md) for frozen commands and
 artifact locations.
 
 Upstream checkout and environment instructions are in
@@ -35,6 +35,17 @@ rtcmp run-method --method dense --sequence manifests/pilot_sequence.yaml
 rtcmp run-method --method gmr --sequence manifests/pilot_sequence.yaml
 rtcmp run-method --method omniretarget --sequence manifests/pilot_sequence.yaml
 ```
+
+## Stage 1 deliverables
+
+The decision is recorded in [`GO_NO_GO.md`](GO_NO_GO.md). Detailed evidence is
+in [`PILOT_REPORT.md`](PILOT_REPORT.md), [`METHOD_SCOPE.md`](METHOD_SCOPE.md),
+[`SPARSE_IK_ANALYSIS.md`](SPARSE_IK_ANALYSIS.md), and
+[`INTERACTION_CASE_STUDY.md`](INTERACTION_CASE_STUDY.md). The concise briefing
+is available as [`EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md) and the
+12-section [`PRESENTATION.md`](PRESENTATION.md). Machine-readable metrics,
+figure source data, provenance, and validation results live under `metrics/`,
+`figures/`, and `manifests/`.
 
 ## License and assets
 

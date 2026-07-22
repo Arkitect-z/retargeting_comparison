@@ -11,8 +11,18 @@ import pandas as pd
 
 from .constants import FULL_LAFAN_STOP_MESSAGE
 from .io_utils import atomic_write_json, load_yaml, sha256_file
-from .reporting import CORE_LABELS, REPORTS, _run_paths
+from .reporting import CORE_LABELS, REPORTS, _run_paths, artifact_manifest
 from .schemas import CanonicalG1, RunManifest, RunStatus
+
+
+def _core_motion_check(motion: CanonicalG1, source_frame_count: int) -> bool:
+    """Return a JSON-native acceptance value for one canonical trajectory."""
+
+    return bool(
+        len(motion.qpos) == source_frame_count
+        and motion.metadata.get("completion_status") == "succeeded"
+        and np.isfinite(motion.qpos).all()
+    )
 
 
 def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
@@ -29,18 +39,21 @@ def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
         try:
             motion = CanonicalG1.load(path)
             motion.validate(source_frame_count=int(sequence["num_frames"]))
-            checks[key] = (
-                len(motion.qpos) == int(sequence["num_frames"])
-                and motion.metadata.get("completion_status") == "succeeded"
-                and np.isfinite(motion.qpos).all()
-            )
+            checks[key] = _core_motion_check(motion, int(sequence["num_frames"]))
         except Exception:
             checks[key] = False
     for case in ("box", "climb"):
         for variant in ("full", "no-hard"):
             path = root / "runs" / "interaction_manifests" / f"interaction__{case}__{variant}.json"
-            checks[f"interaction_{case}_{variant}"] = (
-                path.is_file() and RunManifest.load(path).status == RunStatus.SUCCEEDED
+            manifest = RunManifest.load(path) if path.is_file() else None
+            output_path = Path(manifest.output_path) if manifest and manifest.output_path else None
+            if output_path is not None and not output_path.is_absolute():
+                output_path = root / output_path
+            checks[f"interaction_{case}_{variant}"] = bool(
+                manifest
+                and manifest.status == RunStatus.SUCCEEDED
+                and output_path
+                and output_path.is_file()
             )
     numeric_files = (
         root / "metrics" / "core_summary.csv",
@@ -75,7 +88,11 @@ def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
         for variant in ("full", "no-hard")
     )
     reports_complete = all(checks[f"report_{report}"] for report in REPORTS)
-    if all(checks.values()) and projection.get("within_wall_budget"):
+    if (
+        all(checks.values())
+        and projection.get("within_wall_budget")
+        and projection.get("within_storage_budget")
+    ):
         decision = "GO"
     elif core_complete and interaction_complete and reports_complete:
         decision = "GO WITH CHANGES"
@@ -88,4 +105,5 @@ def validate_stage1(repo_root: str | Path = ".") -> dict[str, Any]:
         "hard_stop_message": FULL_LAFAN_STOP_MESSAGE,
     }
     atomic_write_json(root / "manifests" / "stage1_validation.json", result)
+    artifact_manifest(root)
     return result
