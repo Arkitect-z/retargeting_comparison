@@ -243,7 +243,7 @@ def scale_diagnostics(root: Path, core: pd.DataFrame) -> pd.DataFrame:
 
 
 def controlled_task_residuals(root: Path) -> pd.DataFrame:
-    """Measure the actual Sparse/Dense v2 world-position objectives.
+    """Measure the actual Sparse/Dense v3 world-position objectives.
 
     RF-KPE is a morphology-referenced fidelity metric.  It must not be
     mislabeled as the residual minimized by the controlled optimizer, so the
@@ -753,7 +753,7 @@ def build_markdown(
 
 ## Abstract
 
-This Stage 1 Pilot compares controlled Sparse and Dense Mink retargeting, official GMR, and official OmniRetarget/Holosoma on the source-only-selected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The original presentation made several methods look nearly identical because it mixed method-specific root scales with a method-dependent evaluator scale and used root-frame plots that intentionally remove global translation. Evaluator v2 fixes that confound without changing the sequence, methods, or thresholds: one neutral-G1/source landmark scale is frozen for all quality metrics, native scale policy and scale-invariant path shape are reported separately, and the controlled baselines are rerun with that common scale and an explicit weak temporal cost.
+This Stage 1 Pilot compares controlled Sparse and Dense Mink retargeting, official GMR, and official OmniRetarget/Holosoma on the source-only-selected 600-frame (`19.9998 s`) LAFAN1 window `dance1_subject1_f000000_000600`. The original presentation made several methods look nearly identical because it mixed method-specific root scales with a method-dependent evaluator scale and used root-frame plots that intentionally remove global translation. Evaluator v2 fixes that confound without changing the sequence, methods, or thresholds: one neutral-G1/source landmark scale is frozen for all quality metrics, native scale policy and scale-invariant path shape are reported separately, and controlled baseline v3 uses that common scale, a geometry-derived rigid root anchor, and an explicit weak temporal cost.
 
 ## Frozen design and scope
 
@@ -767,7 +767,7 @@ Stage 1 contains exactly one LAFAN Pilot, three Sparse seeds, four core operatin
 
 ## Scale audit: why root translation looked inconsistent
 
-The common benchmark scale is `{float(evaluator['scale']['common_static_scale']):.9f}`, obtained once from neutral G1 `head→mean(toes)` divided by source frame-0 `Head→mean(toes)`. It is not inferred from any method output.
+The common benchmark scale is `{float(evaluator['scale']['common_static_scale']):.9f}`, obtained once from neutral G1 `head→mean(toes)` divided by source frame-0 `Head→mean(toes)`. It is not inferred from any method output. Controlled v3 additionally applies the single rigid translation `{np.asarray(evaluator['scale']['common_root_alignment_translation_m']).round(6).tolist()} m`, defined as neutral-G1 pelvis minus scaled source frame-0 pelvis. This anchor changes only world placement; it does not alter scale, root-path deltas, or RF-KPE. It removes the artificial ground penetration caused by placing G1's longer pelvis-to-foot chain at the scaled human pelvis height.
 
 {scale_table}
 
@@ -789,11 +789,11 @@ RF-KPE is **root-frame keypoint position error**. Human semantic joints are scal
 
 ## Sparse versus Dense design
 
-For the neutral-seed operating-point comparison, Sparse and Dense share the same G1 model, common uniform scale, DAQP solver, damping, joint limits, iteration budget, first-frame convergence budget, posture cost, weak `q[t-1]` temporal cost, root weights, and sequential warm start. Only the declared task set differs. Sparse tracks root translation/yaw plus left/right wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. No hand/foot orientation, contact prior, learned prior, or independent-frame variant enters the main comparison.
+For the neutral-seed operating-point comparison, Sparse and Dense v3 share the same G1 model, common uniform scale, rigid frame-0 root anchor, DAQP solver, damping, joint limits, iteration budget, first-frame convergence budget, posture cost, weak `q[t-1]` temporal cost, root weights, and sequential warm start. Only the declared task set differs. Sparse tracks root translation/yaw plus left/right wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. No hand/foot orientation, contact prior, learned prior, or independent-frame variant enters the main comparison.
 
 {residual_table}
 
-These are the actual world-position residuals minimized by the controlled solver. They are reported separately from RF-KPE, which is an evaluator-side morphology metric.
+These are the actual world-position residuals minimized by the controlled solver. They are reported separately from RF-KPE, which is an evaluator-side morphology metric. Dense has more mutually competing position targets on a robot with different segment proportions, so lower full-body RF-KPE can coexist with higher declared-task residual and root-path error; that trade-off is part of the result, not a scale inconsistency.
 
 ## Temporal and artifact evidence
 
@@ -850,7 +850,7 @@ After the required 1.5× safety factor, the serial projection is {_fmt(projectio
         root / "EXECUTIVE_SUMMARY.md",
         f"""# Executive Summary
 
-Stage 1 completes the four required operating points, three Sparse seeds, evaluator-v2 scale correction, source-adapter audit, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. The fastest observed operating point is `{fastest}` and the lowest RF-KPE-all is `{best_quality}` on this one Pilot only.
+Stage 1 completes the four required operating points, three Sparse seeds, evaluator-v2 scale correction, controlled-baseline v3 root anchoring, source-adapter audit, synchronized articulated-G1 Rerun evidence, and both Full/No-Hard interaction ablations. The fastest observed operating point is `{fastest}` and the lowest RF-KPE-all is `{best_quality}` on this one Pilot only.
 
 The apparent lack of visual separation was primarily a measurement-presentation issue: all outputs share G1 morphology, root-frame pose plots remove global trajectory, and the old root reference used inconsistent scales. The corrected report separates common-scale fidelity, native solver tracking, and scale-invariant path shape, and decomposes artifacts by cause.
 
@@ -870,7 +870,7 @@ The change required before Stage 2 approval is budget-related: projected serial 
         root / "METHOD_SCOPE.md",
         """# Method Scope
 
-The experimental core is controlled Sparse Mink, controlled Dense Mink, official GMR at `bb1bbe40774794fceb2a7c579a3464a28e68c844`, and official OmniRetarget/Holosoma at `5f48635a3624656a5f46a07df26d43187e59f855`. Sparse and Dense v2 share robot, uniform scale, solver, limits, warm start, iteration budget, damping, posture regularization, explicit weak temporal cost, and neutral initialization; only their declared target sets differ in the main operating-point comparison.
+The experimental core is controlled Sparse Mink, controlled Dense Mink, official GMR at `bb1bbe40774794fceb2a7c579a3464a28e68c844`, and official OmniRetarget/Holosoma at `5f48635a3624656a5f46a07df26d43187e59f855`. Sparse and Dense v3 share robot, uniform scale, rigid root anchor, solver, limits, warm start, iteration budget, damping, posture regularization, explicit weak temporal cost, and neutral initialization; only their declared target sets differ in the main operating-point comparison.
 
 ProtoMotions v3 and PHC are conditional candidates subject to the two-hour gate recorded in `metrics/conditional_candidates.csv`. SOMA Retargeter and cuRoboV2 remain lineage/input-compatibility evidence. Mink/PyRoki are backends; MaskedMimic/BeyondMimic are controllers or trackers; LocoMuJoCo is a benchmark; MIRROR is non-G1. Historical, scope, and experimental claims are separated in `research/claims.csv`.
 """,
@@ -879,7 +879,7 @@ ProtoMotions v3 and PHC are conditional candidates subject to the two-hour gate 
         root / "SPARSE_IK_ANALYSIS.md",
         f"""# Sparse IK Analysis
 
-Sparse tracks root translation/yaw plus both wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. Both use the common scale `{float(evaluator['scale']['common_static_scale']):.9f}`, joint limits, sequential warm start, weak fixed-posture regularization, and the same explicit weak `q[t-1]` temporal cost. Sparse contains no torso/elbow/knee task, contact objective, or learned prior.
+Sparse tracks root translation/yaw plus both wrists and ankles. Dense adds torso, head, shoulders, elbows, hips, knees, and toes. Both use the common scale `{float(evaluator['scale']['common_static_scale']):.9f}`, the same geometry-derived rigid root anchor, joint limits, sequential warm start, weak fixed-posture regularization, and the same explicit weak `q[t-1]` temporal cost. Sparse contains no torso/elbow/knee task, contact objective, or learned prior.
 
 {seeds.to_markdown(index=False, floatfmt='.5f')}
 
@@ -906,7 +906,7 @@ The 2 cm, 5 cm, and 10 cm thresholds use signed geometry-surface distances from 
 1. Follow `docs/UPSTREAM_SETUP.md`, verify frozen commits, and place licensed assets outside Git as recorded in `manifests/`.
 2. Run `rtcmp audit`, `rtcmp prepare-source`, `rtcmp validate-models`, and `rtcmp freeze-evaluator` before any formal method.
 3. In the `robot` environment run `rtcmp audit-source-adapters`; then run `rtcmp gate-candidates`.
-4. Run `rtcmp run-method --method sparse --seed neutral --revision v2 --sequence manifests/pilot_sequence.yaml`; repeat with seeds A/B and run Dense with `--revision v2`. Run GMR and OmniRetarget at their frozen revisions.
+4. Run `rtcmp run-method --method sparse --seed neutral --revision v3 --sequence manifests/pilot_sequence.yaml`; repeat with seeds A/B and run Dense with `--revision v3`. Run GMR and OmniRetarget at their frozen revisions.
 5. Run both variants of `rtcmp run-interaction` for box and climb.
 6. In conda env `vis`, run `rtcmp visualize-results`; then run `rtcmp build-report` and `rtcmp validate-stage1`.
 
@@ -929,7 +929,7 @@ One source-only selected LAFAN1 window: 600 frames, 19.9998 seconds, selected be
 
 ## 4. Controlled baselines
 
-Sparse and Dense v2 share robot, scale, solver, limits, initialization, posture and temporal costs. Only the task set changes; Sparse additionally exposes three deterministic diagnostic seeds.
+Sparse and Dense v3 share robot, scale, rigid root anchor, solver, limits, initialization, posture and temporal costs. Only the task set changes; Sparse additionally exposes three deterministic diagnostic seeds.
 
 ## 5. Scale was a confound
 

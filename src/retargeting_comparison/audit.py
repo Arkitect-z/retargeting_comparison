@@ -59,8 +59,8 @@ def _method(
 
 
 METHODS: tuple[dict[str, str], ...] = (
-    _method("Controlled Sparse-IK", "benchmark v2", "2026", "canonical LAFAN BVH root + 4 end-effectors", "Unitree G1 29-DoF", "yes", "yes", "controlled sparse-task retargeting", "Mink differential IK / DAQP", "MuJoCo + Mink", "joint limits only", "sequential framewise + weak q[t-1] cost", "none", "none", "no", "no", "no", "required; completed", "", "https://github.com/kevinzakka/mink", "controlled_baseline", "required"),
-    _method("Controlled Dense-KeyBody IK", "benchmark v2", "2026", "canonical LAFAN BVH dense key bodies", "Unitree G1 29-DoF", "yes", "yes", "controlled dense-task retargeting", "Mink differential IK / DAQP", "MuJoCo + Mink", "joint limits only", "sequential framewise + weak q[t-1] cost", "none", "none", "no", "no", "no", "required; completed", "", "https://github.com/kevinzakka/mink", "controlled_baseline", "required"),
+    _method("Controlled Sparse-IK", "benchmark v3", "2026", "canonical LAFAN BVH root + 4 end-effectors", "Unitree G1 29-DoF", "yes", "yes", "controlled sparse-task retargeting", "Mink differential IK / DAQP", "MuJoCo + Mink", "joint limits only", "sequential framewise + weak q[t-1] cost", "none", "none", "no", "no", "no", "required; completed", "", "https://github.com/kevinzakka/mink", "controlled_baseline", "required"),
+    _method("Controlled Dense-KeyBody IK", "benchmark v3", "2026", "canonical LAFAN BVH dense key bodies", "Unitree G1 29-DoF", "yes", "yes", "controlled dense-task retargeting", "Mink differential IK / DAQP", "MuJoCo + Mink", "joint limits only", "sequential framewise + weak q[t-1] cost", "none", "none", "no", "no", "no", "required; completed", "", "https://github.com/kevinzakka/mink", "controlled_baseline", "required"),
     _method("GMR", "bb1bbe40774794fceb2a7c579a3464a28e68c844", "2025", "LAFAN BVH", "Unitree G1 29-DoF", "yes", "yes", "body-level non-uniform retargeting", "two-stage Mink differential IK / DAQP", "MuJoCo + Mink", "MuJoCo geometry", "sequential framewise", "no explicit source contact objective", "no", "no", "no", "no", "required; completed", "", "https://github.com/YanjieZe/GMR", "retargeter", "required"),
     _method("OmniRetarget / Holosoma", "5f48635a3624656a5f46a07df26d43187e59f855", "2025", "LAFAN positions or SMPL-family interaction motion", "Unitree G1 29-DoF", "yes", "yes", "interaction-mesh constrained retargeting", "Sequential SOCP", "Holosoma kinematics", "MuJoCo surface distance in evaluator", "sequential trajectory", "foot sticking", "object and terrain interaction", "no", "no", "no", "required; completed", "", "https://github.com/amazon-far/holosoma", "retargeter", "required"),
     _method("ProtoMotions v3", "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c", "2026", "SMPL MotionLib keypoints", "Unitree G1 29-DoF", "yes", "yes", "trajectory-level PyRoki retargeting", "JAX least squares", "PyRoki", "self-collision term present but disabled in frozen G1 script", "whole trajectory; configurable fixed buffer", "foot contact and foot tilt", "no object in retargeting script", "no", "no", "no", "conditional gate", "reported by bounded gate when not integration-ready", "https://github.com/NVlabs/ProtoMotions", "retargeter_and_framework", "conditional_1"),
@@ -424,12 +424,14 @@ The graph is an evidence map, not a performance ranking.
                 {
                     "name": "sparse",
                     "implementation": "controlled Mink baseline",
+                    "benchmark_revision": "v3",
                     "config": "configs/controlled_mink.yaml",
                     "seeds": ["neutral", "A", "B"],
                 },
                 {
                     "name": "dense",
                     "implementation": "controlled Mink baseline",
+                    "benchmark_revision": "v3",
                     "config": "configs/controlled_mink.yaml",
                     "seeds": ["neutral"],
                 },
