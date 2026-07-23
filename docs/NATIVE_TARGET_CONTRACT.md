@@ -230,9 +230,10 @@ PYTHONPATH=src conda run -n capture --no-capture-output \
 ```
 
 The dedicated tests verify the four frozen numeric hashes, formula behavior,
-source/config/asset/implementation hashes, full 600-frame coverage, deterministic
-pickle-free output, byte-reproducible public aggregation, and the invariant
-`solver_invoked=false`.
+source/config/asset/implementation hashes, each method's registered target
+length (600 frames except ProtoMotions v3's official 450-frame prefix),
+deterministic pickle-free output, byte-reproducible public aggregation, and the
+invariant `solver_invoked=false`.
 
 ## Reporting rules
 

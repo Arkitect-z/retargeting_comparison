@@ -507,13 +507,20 @@ def audit_source_adapters(repo_root: str | Path = ".") -> list[dict[str, Any]]:
         contact_target_policy="canonical contacts repeated ankle/toe then official smoothing",
         graph_policy="official fixed pairwise retarget mask and whole-trajectory objectives",
         ground_policy="official contact/tilt losses; no post-hoc ground shift",
-        timeline_policy=f"{human.fps:.12g} fps; stride 1; whole 600-frame solve",
+        timeline_policy=(
+            f"{human.fps:.12g} fps source adapter retains 600 frames; official "
+            "trim-or-pad contract consumes source prefix 0:450 at stride 1"
+        ),
         robot_asset_path=(
             root
             / "external/ProtoMotions/protomotions/data/assets/urdf/for_retargeting/g1.urdf"
         ),
         source_artifact_path=proto_path,
-        caveat=str(proto_metrics["caveat"]),
+        caveat=(
+            f"{proto_metrics['caveat']} The upstream fixed-shape solver consumes "
+            "450/600 source frames; no padding, interpolation, or stitching is used "
+            "to claim full-source completion."
+        ),
     )
     atomic_write_json(proto_path.parent / "manifest.json", rows[-1])
     artifacts["protomotions-v3"] = {

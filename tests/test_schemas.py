@@ -3,7 +3,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from retargeting_comparison.schemas import CanonicalG1, CanonicalHuman
+from retargeting_comparison.schemas import (
+    CanonicalG1,
+    CanonicalHuman,
+    canonical_g1_source_prefix_view,
+)
 
 
 def _human() -> CanonicalHuman:
@@ -84,3 +88,48 @@ def test_g1_rejects_non_unit_quaternion() -> None:
     )
     with pytest.raises(ValueError, match="unit wxyz"):
         motion.validate()
+
+
+def test_g1_source_prefix_view_is_exact_and_keeps_full_source_completion() -> None:
+    frames = 10
+    qpos = np.zeros((frames, 36), dtype=np.float64)
+    qpos[:, 0] = np.arange(frames)
+    qpos[:, 3] = 1.0
+    motion = CanonicalG1(
+        qpos=qpos,
+        fps=30.0,
+        source_frame_idx=np.arange(frames),
+        valid=np.ones(frames, dtype=bool),
+        per_frame_solve_time_s=np.arange(frames, dtype=np.float64) / 1000.0,
+        metadata={"completion_status": "succeeded"},
+    )
+
+    view = canonical_g1_source_prefix_view(
+        motion, 7, source_frame_count=frames
+    )
+
+    assert view.qpos.shape == (7, 36)
+    assert np.array_equal(view.qpos[:, 0], np.arange(7))
+    assert np.array_equal(view.source_frame_idx, np.arange(7))
+    assert view.metadata["completion_status"] == "incomplete"
+    assert view.metadata["comparison_source_frame_range"] == [0, 7]
+    assert view.metadata["comparison_padding_or_interpolation_used"] is False
+    assert not np.shares_memory(view.qpos, motion.qpos)
+
+
+def test_g1_source_prefix_view_rejects_a_noncontiguous_prefix() -> None:
+    qpos = np.zeros((5, 36), dtype=np.float64)
+    qpos[:, 3] = 1.0
+    motion = CanonicalG1(
+        qpos=qpos,
+        fps=30.0,
+        source_frame_idx=np.asarray([0, 1, 3, 4, 5]),
+        valid=np.ones(5, dtype=bool),
+        per_frame_solve_time_s=np.zeros(5),
+        metadata={"completion_status": "succeeded"},
+    )
+
+    with pytest.raises(ValueError, match="source prefix exactly"):
+        canonical_g1_source_prefix_view(
+            motion, 3, source_frame_count=5
+        )

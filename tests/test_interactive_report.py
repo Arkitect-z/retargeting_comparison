@@ -60,7 +60,7 @@ def test_interactive_data_is_complete_and_finite() -> None:
     } == {"frame_index_only_not_exact_timestamp"}
     for method in (*OPERATING_POINTS, "unitree-reference"):
         series = data["frame_series"][method]
-        assert len(series["source_frame_idx"]) == 600
+        assert len(series["source_frame_idx"]) == 450
         assert all(value == value for value in series["rf_kpe_all_m"])
     assert all(item["sha256"] == sha256_file(ROOT / item["path"]) for item in data["input_hashes"])
     expected_bundle = hashlib.sha256(

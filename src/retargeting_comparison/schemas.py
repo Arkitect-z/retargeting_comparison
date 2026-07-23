@@ -187,6 +187,54 @@ class CanonicalG1:
         return value
 
 
+def canonical_g1_source_prefix_view(
+    motion: CanonicalG1,
+    frame_count: int,
+    *,
+    source_frame_count: int,
+) -> CanonicalG1:
+    """Return an in-memory, hash-free comparison view of source frames ``0:N``.
+
+    This helper never writes or pads a retargeted trajectory.  It is used when
+    one official method has a shorter native trajectory contract and every
+    method must be scored on the exact same source frames.
+    """
+
+    motion.validate(source_frame_count=source_frame_count)
+    if not 1 <= frame_count <= source_frame_count:
+        raise ValueError("Comparison prefix is outside the canonical source")
+    indices = np.asarray(motion.source_frame_idx, dtype=np.int64)
+    expected = np.arange(frame_count, dtype=np.int64)
+    if len(indices) < frame_count or not np.array_equal(indices[:frame_count], expected):
+        raise ValueError("Motion does not cover the requested source prefix exactly")
+    metadata = dict(motion.metadata)
+    metadata.update(
+        {
+            "completion_status": (
+                "succeeded"
+                if frame_count / source_frame_count >= MIN_COMPLETION_RATIO
+                else "incomplete"
+            ),
+            "comparison_view": True,
+            "comparison_source_frame_range": [0, frame_count],
+            "comparison_source_frame_count": source_frame_count,
+            "comparison_padding_or_interpolation_used": False,
+        }
+    )
+    view = CanonicalG1(
+        qpos=np.asarray(motion.qpos[:frame_count], dtype=np.float64).copy(),
+        fps=float(motion.fps),
+        source_frame_idx=expected,
+        valid=np.asarray(motion.valid[:frame_count], dtype=bool).copy(),
+        per_frame_solve_time_s=np.asarray(
+            motion.per_frame_solve_time_s[:frame_count], dtype=np.float64
+        ).copy(),
+        metadata=metadata,
+    )
+    view.validate(source_frame_count=source_frame_count)
+    return view
+
+
 @dataclass
 class RunManifest:
     run_id: str

@@ -13,13 +13,18 @@ pyroki:
 native_environment:
   conda_environment: egoallo
   override_variable: RTCMP_PROTOMOTIONS_V3_PYTHON
-  formal_device: cpu
-  rejected_device_attempt:
+  formal_device: cuda
+  jax_platforms: cuda,cpu
+  rejected_600_frame_device_attempt:
     device: NVIDIA RTX 3090 Ti
     backend: cuda
     status: hardware_compatibility_failure
     reason: XLA kernel requested 131072 shared-memory bytes; device exposed 101376
     substitute_output_used: false
+  corrected_450_frame_cuda_preflight:
+    status: solver_compiled
+    first_wrapper_failure: jax.debug.callback required CPU backend in addition to CUDA
+    corrective_environment_contract: JAX_PLATFORMS=cuda,cpu
   python: 3.12.12
   packages:
     jax: 0.8.2
@@ -35,7 +40,13 @@ native_environment:
     - external/ProtoMotions
 input:
   source_type: smpl
-  target_raw_frames: 600
+  source_raw_frames: 600
+  target_raw_frames: 450
+  fixed_trajectory_policy: trim_or_pad
+  fixed_trajectory_duration_s: 15
+  official_documentation: https://nvlabs.github.io/ProtoMotions/tutorials/workflows/retargeting_pyroki.html
+  shared_stage1_evaluation_frames: [0, 450]
+  full_source_coverage_ratio: 0.75
   subsample_factor: 1
   fps: 30.000300003000028
   keypoint_count: 18
@@ -90,5 +101,8 @@ output:
   root_quaternion: wxyz
   translation_unit: metre
   dtype: float64
-  exact_frames_required: 600
+  exact_native_contract_frames_required: 450
+  frozen_source_frames: 600
+  canonical_full_source_completion_status: incomplete
+  native_contract_completion_status: succeeded
 no_substitution: true

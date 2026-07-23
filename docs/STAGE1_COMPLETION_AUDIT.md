@@ -2,11 +2,12 @@
 
 ## Decision
 
-**NO-GO — revised Stage 1 work in progress.** The legacy four-core Pilot is
-complete, but the accepted scope now also requires ProtoMotions v2.3/Mink,
-ProtoMotions v3/modified-PyRoki, an official preprocessing-policy audit,
-hashed pre-solver targets, controlled scale-policy transplantation, and
-within-method root/local scale sensitivity.
+**NO-GO — corrected formal campaign in progress.** The legacy four-core Pilot
+and most expanded harness components exist, but the earlier ProtoMotions v3
+campaign incorrectly overrode the documented fixed 450-frame trajectory
+contract with 600 frames. That evidence is now quarantined. Acceptance requires
+a new six-method formal campaign and regeneration of every dependent metric,
+scale result, visualization, report, and validation manifest.
 
 This is a completeness decision, not evidence that a method failed. No
 Full-LAFAN or AMASS dataset run was started.
@@ -23,20 +24,20 @@ Full-LAFAN or AMASS dataset run was started.
 | Official OmniRetarget/Holosoma | 600/600 canonical frames at frozen commit | Complete |
 | Legacy evaluator/timing/artifact evidence | disaggregated metrics and raw timing | Complete |
 | Interaction case study | box/climb × Full/No-Hard | Complete |
-| Articulated G1 Rerun visualization | synchronized 600-frame legacy recording | Complete |
+| Articulated G1 Rerun visualization | legacy recording exists; corrected acceptance recording must use shared frames 0–449 | Pending rebuild |
 | GMR/Holosoma/Proto v2/v3/PHC AMASS policy audit | `research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md` | Complete as code audit |
-| ProtoMotions v2.3 dependency and input gates | stable tag found; floating dependencies and 165-D contract identified | Pending implementation |
-| ProtoMotions v2.3 canonical Pilot | no accepted 600-frame output yet | Missing |
-| ProtoMotions v3 canonical Pilot | same-source keypoints exist; no accepted 600-frame output/environment yet | Missing |
+| ProtoMotions v2.3 dependency and input gates | frozen environment, 165-D contract, smoke path, and native-target capture implemented | Complete |
+| ProtoMotions v2.3 canonical Pilot | prior output exists; new hash-bound formal campaign materialization pending | Pending formal rerun |
+| ProtoMotions v3 canonical Pilot | 450-frame CUDA diagnostic succeeds; formal cold/warm-up/3×warm campaign pending | Pending formal rerun |
 | PHC treatment | official fitting asset identified as 37-motor/noncanonical | Complete as exclusion evidence |
-| Hashed pre-solver targets for every public method | schema designed, packages not captured | Missing |
-| Controlled scale-policy transplant | registered in `configs/scale_policy_sensitivity.yaml` | Missing results |
-| Root/local ±5% within-method response | five variants registered | Missing results |
+| Hashed pre-solver targets for every public method | exact captures and public aggregate exist | Complete; rebind after formal outputs |
+| Controlled scale-policy transplant | registered; old dependent tables invalidated by v3 length correction | Pending corrected rebuild |
+| Root/local ±5% within-method response | registered; v3 arm must be regenerated at 450 frames | Pending corrected rebuild |
 | Neutral-SMPL-X actor-shape policy formula probe | short/zero/tall, official-source-hash-bound reconstruction; not runtime-constructor or ranking evidence | Generated; exact LAFAN targets require separate schema-2 native capture |
 | Fixed-contact/constraint-flip evidence | protocol registered | Missing results |
-| Revised interactive visualization/report | must include v2/v3 and active scale policy | Missing |
-| Revised Stage 1 validator | must fail on every missing mandatory item | Pending implementation |
-| Revised Stage 2 projection | legacy projection excludes new methods/variants | Invalid until rerun |
+| Revised interactive visualization/report | implementation exists; acceptance artifacts await corrected evidence | Pending rebuild |
+| Revised Stage 1 validator | fail-closed implementation and regression suite pass | Complete; current decision remains NO-GO |
+| Revised Stage 2 projection | design exists; timing-dependent projection must be regenerated | Pending corrected timing |
 
 ## What the legacy scale correction did and did not prove
 
@@ -55,7 +56,9 @@ before solving and retains native/controlled results as separate evidence.
 - ProtoMotions v2.3 is an official G1-29 sequential Mink retargeter. It uses
   PHC-derived preprocessing/FK infrastructure but is not a PHC algorithm result.
 - ProtoMotions v3 is the required whole-trajectory modified-PyRoki point. Its
-  600-frame CLI setting and tighter joint limits must be frozen explicitly.
+  official contract trims/pads to 450 frames; the 600-frame source therefore
+  yields 450/450 native completion and 450/600 full-source coverage. The shared
+  comparison window is frames 0–449, and no missing frames may be fabricated.
 - PHC remains lineage and AMASS-policy evidence. Its documented public G1
   fitting asset has 37 motors and cannot enter the canonical G1-29 main plot
   unchanged.

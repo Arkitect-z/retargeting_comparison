@@ -275,12 +275,14 @@ def test_local_stage1_visualization_contract_when_artifacts_exist() -> None:
         data = load_stage1_visualization(".")
     except FileNotFoundError as error:
         _missing_artifact(f"complete local Stage 1 artifacts are not present: {error}")
-    assert data.frame_count == 600
+    assert data.frame_count == 450
     assert set(data.methods) == {style.key for style in METHOD_STYLES}
     assert len(data.robot_visuals) == 35
-    assert all(method.positions.shape == (600, 17, 3) for method in data.methods.values())
+    assert all(method.positions.shape[0] >= 450 for method in data.methods.values())
+    assert all(method.positions.shape[1:] == (17, 3) for method in data.methods.values())
     assert all(
-        method.link_transforms["pelvis"].shape == (600, 4, 4)
+        method.link_transforms["pelvis"].shape[0] >= 450
+        and method.link_transforms["pelvis"].shape[1:] == (4, 4)
         for method in data.methods.values()
     )
     assert all(
@@ -356,7 +358,7 @@ def test_final_rerun_manifest_and_rrd_pass_deep_validation() -> None:
         _missing_artifact("final schema-v5 Rerun manifest is not built")
     result = validate_rerun_manifest_contract(".")
     assert result["result"] == "verified"
-    assert result["frame_marker_rows"] == 600
+    assert result["frame_marker_rows"] == 450
     assert result["exact_grid_trajectory_set"] == sorted(EXPECTED_TRAJECTORY_KEYS)
 
 

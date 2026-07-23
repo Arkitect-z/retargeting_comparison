@@ -153,6 +153,13 @@ required_metrics:
 
 acceptance:
   full_pilot_frames_per_variant: 600
+  method_specific_native_contract:
+    protomotions_v3:
+      frames: 450
+      source_frame_range: [0, 450]
+      official_policy: fixed 15-second trim-or-pad at 30 FPS
+      full_source_coverage_ratio: 0.75
+      comparison_scope: shared 450-frame prefix for every method
   minimum_completion_ratio: 0.95
   all_required_variants_mandatory: true
   native_and_controlled_separated: true

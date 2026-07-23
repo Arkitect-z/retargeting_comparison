@@ -55,7 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--python", required=True)
-    parser.add_argument("--source", required=True, help="Canonical 600-frame human NPZ")
+    parser.add_argument(
+        "--source",
+        required=True,
+        help="Canonical 600-frame human NPZ; the official solver consumes its 450-frame prefix",
+    )
     parser.add_argument("--keypoints", required=True, help="Audited native keypoints.npy")
     parser.add_argument("--output", required=True, help="Canonical G1 output NPZ")
     parser.add_argument("--work-dir", required=True)
@@ -309,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         motion = convert_native_output(
             native_output,
             source_frame_count=len(human.timestamps),
+            native_contract_frame_count=int(args.target_raw_frames),
             native_joint_names=native_names,
             timing_json=timing_json,
             metadata={
@@ -400,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
             repetition_motion = convert_native_output(
                 native_timing_artifact,
                 source_frame_count=len(human.timestamps),
+                native_contract_frame_count=int(args.target_raw_frames),
                 native_joint_names=native_names,
                 metadata={"canonical_source_sha256": human.source_sha256},
             )

@@ -59,7 +59,7 @@ EXPECTED_FROZEN_ORDER = (
 EXPECTED_OUTPUTS = {
     "sparse-neutral": "sparse-neutral-v6",
     "dense": "dense-v6",
-    "protomotions-v3": "protomotions-v3-v2",
+    "protomotions-v3": "protomotions-v3-v3",
     "omniretarget": "omniretarget-v3",
     "protomotions-v2.3": "protomotions-v2.3-v3",
     "gmr": "gmr-v3",
@@ -380,7 +380,7 @@ def build_campaign_plan(
                 "--cold-evidence",
                 str(cold_root / "evidence.json"),
                 "--summary-json",
-                "manifests/protomotions_v3_campaign.formal_timing_v2.json",
+                "manifests/protomotions_v3_campaign.formal_timing_v3.json",
                 "--run-fresh-cold",
                 "--timing-only",
             ]
@@ -388,7 +388,7 @@ def build_campaign_plan(
             implementation = _proto_implementation_hash(root)
             implementation_receipt = _proto_provenance_receipt(root)
             extra_paths = [
-                root / "manifests/protomotions_v3_campaign.formal_timing_v2.json"
+                root / "manifests/protomotions_v3_campaign.formal_timing_v3.json"
             ]
             native_input: dict[str, Any] | None = {
                 "path": _relative(keypoints, root),
@@ -809,14 +809,30 @@ def validate_job_artifacts(
         )
     motion = CanonicalG1.load(output)
     source_frames = int(plan["source_frames"])
+    expected_frames = 450 if job["name"] == "protomotions-v3" else source_frames
     motion.validate(source_frame_count=source_frames)
     if (
-        len(motion.qpos) != source_frames
-        or motion.metadata.get("completion_status") != "succeeded"
+        len(motion.qpos) != expected_frames
         or not bool(np.all(motion.valid))
     ):
         raise ValueError(
-            f"Formal output is not a complete valid trajectory: {job['name']}"
+            f"Formal output does not satisfy its registered trajectory contract: {job['name']}"
+        )
+    if job["name"] == "protomotions-v3":
+        if not (
+            motion.metadata.get("completion_status") == "incomplete"
+            and motion.metadata.get("full_source_completion_ratio") == 0.75
+            and motion.metadata.get("native_contract_completion_status")
+            == "succeeded"
+            and motion.metadata.get("native_contract_frame_count") == 450
+        ):
+            raise ValueError(
+                "ProtoMotions v3 must distinguish native 450-frame completion "
+                "from 600-frame full-source coverage"
+            )
+    elif motion.metadata.get("completion_status") != "succeeded":
+        raise ValueError(
+            f"Formal output is not complete against the full source: {job['name']}"
         )
     manifest = RunManifest.load(manifest_path)
     if manifest.status != RunStatus.SUCCEEDED or manifest.exit_code != 0:
@@ -833,7 +849,7 @@ def validate_job_artifacts(
     timing = json.loads(timing_path.read_text(encoding="utf-8"))
     timing_receipt = validate_standard_timing(
         timing,
-        source_frames=source_frames,
+        source_frames=expected_frames,
         expected_cpu_affinity=expected_cpu_affinity,
     )
     cold, warmup, measured = _timing_repetitions(timing)

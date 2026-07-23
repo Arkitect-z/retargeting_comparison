@@ -233,9 +233,10 @@ def main(argv: list[str] | None = None) -> int:
     timing_path = Path(args.timing_json).resolve()
     cpu_affinity = _pin_to_one_cpu()
     requested_platform = os.environ.get("JAX_PLATFORMS", "")
-    if requested_platform not in {"cpu", "cuda"}:
+    if requested_platform not in {"cpu", "cuda,cpu"}:
         raise RuntimeError(
-            "Native ProtoMotions requires an explicit JAX_PLATFORMS=cpu|cuda contract"
+            "Native ProtoMotions requires an explicit "
+            "JAX_PLATFORMS=cpu|cuda,cpu contract"
         )
     proto = root / "external/ProtoMotions"
     script = proto / "pyroki/batch_retarget_to_g1_from_keypoints.py"

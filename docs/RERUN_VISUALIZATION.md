@@ -38,7 +38,10 @@ conda run -n vis rerun artifacts/visualization/stage1_comparison.rrd
 
 To stream while building, add `--spawn`. For a fast diagnostic recording, use
 `--max-frames 60`; use `--stride 2` only for visualization diagnostics, never
-as a replacement for the full 600-frame acceptance recording.
+as a replacement for the full shared 450-frame acceptance recording. The
+source and five other trajectories retain their 600-frame artifacts, but the
+synchronized comparison stops at frame 449 because ProtoMotions v3's official
+contract is 450 frames.
 
 ProtoMotions v3 may be unavailable while its whole-trajectory solver is still
 running. A diagnostic recording can explicitly skip incomplete methods through

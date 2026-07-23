@@ -30,7 +30,11 @@ from .scale_metric_registry import (
     derive_registered_rank_stability,
     derive_registered_scale_slopes,
 )
-from .schemas import CanonicalG1, CanonicalHuman
+from .schemas import (
+    CanonicalG1,
+    CanonicalHuman,
+    canonical_g1_source_prefix_view,
+)
 
 
 WITHIN_METHOD_VARIANTS: dict[str, tuple[float, float]] = {
@@ -1026,9 +1030,17 @@ def build_scale_run_provenance(
                 == scale_execution_contract(root, method)["environment_name"]
             )
             expected_root, expected_local = WITHIN_METHOD_VARIANTS[variant]
+        expected_frames = 450 if method == "protomotions_v3" else len(human.timestamps)
         exact_frames = bool(
+            len(motion.qpos) == expected_frames
+            and np.array_equal(motion.source_frame_idx, np.arange(expected_frames))
+            and np.asarray(motion.valid, dtype=bool).all()
+        )
+        exact_full_source_frames = bool(
             len(motion.qpos) == len(human.timestamps)
-            and np.array_equal(motion.source_frame_idx, np.arange(len(human.timestamps)))
+            and np.array_equal(
+                motion.source_frame_idx, np.arange(len(human.timestamps))
+            )
             and np.asarray(motion.valid, dtype=bool).all()
         )
         source_match = metadata.get("canonical_source_sha256") == human.source_sha256
@@ -1086,6 +1098,12 @@ def build_scale_run_provenance(
                 ),
                 "variant_match": variant_match,
                 "contact_policy_match": contact_match,
+                "registered_frame_contract": expected_frames,
+                "exact_registered_frames": exact_frames,
+                "exact_full_source_frames": exact_full_source_frames,
+                # Retained for schema compatibility; from this revision it
+                # means exact registered method contract, not necessarily all
+                # 600 source frames.
                 "exact_full_frames": exact_frames,
                 "accepted": accepted,
             }
@@ -1188,11 +1206,36 @@ def summarize_scale_sensitivity(repo_root: str | Path = ".") -> pd.DataFrame:
     build_scale_run_provenance(root, collected)
     for role, method, variant, path in collected:
         motion = CanonicalG1.load(path)
+        comparison_motion = canonical_g1_source_prefix_view(
+            motion, 450, source_frame_count=len(human.timestamps)
+        )
         if role.startswith("native_response_") and variant == "native":
-            native_motion[(role, method)] = motion
+            native_motion[(role, method)] = comparison_motion
     for role, method, variant, path in collected:
         motion = CanonicalG1.load(path)
-        table, summary = evaluate_motion(human, motion, robot, protocol)
+        comparison_motion = canonical_g1_source_prefix_view(
+            motion, 450, source_frame_count=len(human.timestamps)
+        )
+        table, summary = evaluate_motion(human, comparison_motion, robot, protocol)
+        summary.update(
+            {
+                "comparison_frame_start": 0,
+                "comparison_frame_end_exclusive": 450,
+                "comparison_frames": 450,
+                "comparison_window_completion_ratio": 1.0,
+                "full_source_output_frames": len(motion.qpos),
+                "full_source_coverage_ratio": (
+                    len(motion.qpos) / len(human.timestamps)
+                ),
+                "native_contract_completion_ratio": float(
+                    motion.metadata.get(
+                        "native_contract_completion_ratio",
+                        len(motion.qpos) / len(human.timestamps),
+                    )
+                ),
+                "padding_or_interpolation_used": False,
+            }
+        )
         label = f"{role}__{method}__{variant}".replace("/", "-")
         save_evaluation(table, summary, root / "metrics" / "scale_sensitivity", label)
         qpos_rms = float("nan")
@@ -1200,13 +1243,16 @@ def summarize_scale_sensitivity(repo_root: str | Path = ".") -> pd.DataFrame:
         if role.startswith("native_response_") and (role, method) in native_motion:
             reference = native_motion[(role, method)]
             count = min(len(reference.qpos), len(motion.qpos))
-            difference = motion.qpos[:count] - reference.qpos[:count]
+            difference = comparison_motion.qpos[:count] - reference.qpos[:count]
             difference[:, 7:] = np.arctan2(
                 np.sin(difference[:, 7:]), np.cos(difference[:, 7:])
             )
             qpos_rms = float(np.sqrt(np.mean(difference**2)))
             current_fk = np.stack(
-                [np.concatenate(list(robot.semantic_positions(q).values())) for q in motion.qpos[:count]]
+                [
+                    np.concatenate(list(robot.semantic_positions(q).values()))
+                    for q in comparison_motion.qpos[:count]
+                ]
             )
             native_fk = np.stack(
                 [np.concatenate(list(robot.semantic_positions(q).values())) for q in reference.qpos[:count]]
@@ -1220,7 +1266,7 @@ def summarize_scale_sensitivity(repo_root: str | Path = ".") -> pd.DataFrame:
             root_multiplier, local_multiplier = WITHIN_METHOD_VARIANTS[variant]
             policy = _scale_axes(base_policy, root_multiplier, local_multiplier)
         target_diagnostics = _standardized_target_diagnostics(
-            root, human, robot, motion, policy
+            root, human, robot, comparison_motion, policy
         )
         duration_s = len(motion.qpos) / float(human.fps)
         end_to_end_s = float(

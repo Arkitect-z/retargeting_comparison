@@ -1,5 +1,5 @@
 schema_version: 1
-campaign_id: stage1-pilot-formal-timing-v3
+campaign_id: stage1-pilot-formal-timing-v4
 sequence_manifest: manifests/pilot_sequence.yaml
 randomization:
   generator: numpy.random.Generator.permutation
@@ -37,10 +37,12 @@ protocol:
 registered_outputs:
   sparse-neutral: sparse-neutral-v6
   dense: dense-v6
-  protomotions-v3: protomotions-v3-v2
+  protomotions-v3: protomotions-v3-v3
   omniretarget: omniretarget-v3
   protomotions-v2.3: protomotions-v2.3-v3
   gmr: gmr-v3
 notes:
   - Scale-response and interaction jobs are not formal timing jobs and are excluded from the randomized order.
   - Sparse seeds A/B are null-space diagnostics, not additional operating points in the timing frontier.
+  - ProtoMotions v3 follows its official fixed 450-frame trajectory contract. Its timing duration is 450 frames; cross-method quality uses the common source prefix 0:450.
+  - The earlier 600-frame ProtoMotions v3 attempt is a protocol deviation and is excluded from the formal operating point.

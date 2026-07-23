@@ -414,15 +414,19 @@ def test_scale_collector_separates_fixed_contact_and_robustness_roles(
             "experiment_role": role,
             "method": method,
             "variant": variant,
-            "frames": 600,
-            "completion_ratio": 1.0,
+            "frames": 450,
+            "completion_ratio": 0.75,
+            "comparison_window_completion_ratio": 1.0,
+            "full_source_coverage_ratio": (
+                0.75 if method == "protomotions_v3" else 1.0
+            ),
             "output_path": str(output.relative_to(tmp_path)),
             "output_sha256": sha256_file(output),
         }
         row.update({metric: 0.01 * (index + 1) for metric in QUALITY_COLUMNS})
         row.update(
             {
-                metric: 1.0
+                metric: 0.75
                 if metric == "completion_ratio"
                 else 0.01 * (index + 1)
                 for metric in SCALE_RESPONSE_METRIC_NAMES
@@ -564,7 +568,7 @@ def test_protomotions_v3_native_scale_point_requires_byte_identical_formal_bindi
         tmp_path
         / "runs"
         / sequence_id
-        / "protomotions-v3-v2/attempt_001/canonical_g1.npz"
+        / "protomotions-v3-v3/attempt_001/canonical_g1.npz"
     )
     output.parent.mkdir(parents=True)
     formal.parent.mkdir(parents=True)
@@ -738,7 +742,12 @@ def test_direct_reference_comparison_uses_same_g1_trajectories(
         path = tmp_path / f"{spec.key}.npz"
         save(path, q_method, spec.metadata_methods[0])
         paths[spec.key] = path
-    direct = build_direct_reference_comparison(tmp_path, paths)
+    direct = build_direct_reference_comparison(
+        tmp_path,
+        paths,
+        source_frame_count=2,
+        comparison_frame_count=2,
+    )
     assert len(direct) == len(CORE_METHODS) * 11
     assert direct.comparison_type.eq(
         "direct_same_g1_frame_index_aligned_trajectory_disagreement"
@@ -795,7 +804,12 @@ def test_direct_reference_velocity_is_periodic_before_differencing(
         save(path, method, spec.metadata_methods[0])
         paths[spec.key] = path
 
-    direct = build_direct_reference_comparison(tmp_path, paths)
+    direct = build_direct_reference_comparison(
+        tmp_path,
+        paths,
+        source_frame_count=3,
+        comparison_frame_count=3,
+    )
     velocity = direct.loc[
         direct.metric.eq("direct_joint_velocity_rmse_rad_s"), "method_value"
     ]

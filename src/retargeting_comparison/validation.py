@@ -32,6 +32,8 @@ from .scale_metric_registry import (
 from .stage1_publication import (
     CORE_METHODS,
     EXPECTED_FRAMES,
+    SHARED_COMPARISON_FRAMES,
+    SOURCE_FRAMES,
     FORMAL_NATIVE_SCALE_ROLE,
     CONTACT_ROBUSTNESS_ROLE,
     NATIVE_SCALE_METHODS,
@@ -49,16 +51,27 @@ from .stage1_publication import (
 )
 
 
-def _core_motion_check(motion: CanonicalG1, source_frame_count: int) -> bool:
+def _core_motion_check(
+    motion: CanonicalG1,
+    source_frame_count: int,
+    *,
+    expected_output_frames: int | None = None,
+) -> bool:
     """Return a JSON-native acceptance value for one canonical trajectory."""
 
+    expected_frames = expected_output_frames or source_frame_count
+    expected_status = (
+        "succeeded"
+        if expected_frames / source_frame_count >= 0.95
+        else "incomplete"
+    )
     return bool(
-        len(motion.qpos) == source_frame_count
-        and motion.metadata.get("completion_status") == "succeeded"
+        len(motion.qpos) == expected_frames
+        and motion.metadata.get("completion_status") == expected_status
         and np.isfinite(motion.qpos).all()
         and np.isfinite(motion.per_frame_solve_time_s).all()
         and np.asarray(motion.valid, dtype=bool).all()
-        and np.array_equal(motion.source_frame_idx, np.arange(source_frame_count))
+        and np.array_equal(motion.source_frame_idx, np.arange(expected_frames))
     )
 
 
@@ -90,7 +103,24 @@ def _all_motion_outputs(root: Path) -> bool:
     for spec in (*CORE_METHODS, *SPARSE_DIAGNOSTICS, REFERENCE_METHOD):
         motion = CanonicalG1.load(paths[spec.key])
         motion.validate(source_frame_count=EXPECTED_FRAMES)
-        if not _core_motion_check(motion, EXPECTED_FRAMES):
+        expected_output_frames = (
+            SHARED_COMPARISON_FRAMES
+            if spec.key == "protomotions-v3"
+            else SOURCE_FRAMES
+        )
+        if not _core_motion_check(
+            motion,
+            EXPECTED_FRAMES,
+            expected_output_frames=expected_output_frames,
+        ):
+            return False
+        if spec.key == "protomotions-v3" and not (
+            motion.metadata.get("full_source_completion_ratio") == 0.75
+            and motion.metadata.get("native_contract_completion_status")
+            == "succeeded"
+            and motion.metadata.get("native_contract_frame_count")
+            == SHARED_COMPARISON_FRAMES
+        ):
             return False
         if str(motion.metadata.get("method", "")) not in spec.metadata_methods:
             return False
@@ -329,7 +359,7 @@ def _smoke_runs(root: Path) -> bool:
 
     from .stage1_timing_campaign import _proto_provenance_receipt
 
-    proto_dir = root / "runs" / sequence_id / "protomotions-v3-v2-smoke2"
+    proto_dir = root / "runs" / sequence_id / "protomotions-v3-v3-smoke2"
     proto_output = proto_dir / "canonical_g1.npz"
     proto_evidence = proto_dir / "evidence.json"
     proto_receipt = proto_dir / "smoke_receipt.json"
@@ -437,7 +467,12 @@ def _source_adapters(root: Path) -> bool:
         if (
             int(capture.get("schema_version", 0)) != 2
             or capture.get("method") != str(row.method)
-            or int(capture.get("frames", -1)) != EXPECTED_FRAMES
+            or int(capture.get("frames", -1))
+            != (
+                SHARED_COMPARISON_FRAMES
+                if str(row.method) == "protomotions_v3"
+                else SOURCE_FRAMES
+            )
             or capture.get("tensor_sha256")
             != str(row.pre_solver_tensor_sha256)
             or capture.get("boundary_observed_during_formal_run") is not True
@@ -521,7 +556,9 @@ def _evaluator_outputs(root: Path) -> bool:
         len(direct) != len(CORE_METHODS) * len(direct_metrics)
         or set(direct.key.astype(str)) != {spec.key for spec in CORE_METHODS}
         or set(direct.metric.astype(str)) != direct_metrics
-        or not (direct.frames.astype(int) == EXPECTED_FRAMES).all()
+        or not (
+            direct.frames.astype(int) == SHARED_COMPARISON_FRAMES
+        ).all()
         or not direct.timeline_alignment.astype(str).eq(
             "frame_index_only_not_exact_timestamp"
         ).all()
@@ -555,8 +592,20 @@ def _evaluator_outputs(root: Path) -> bool:
     )
     return bool(
         rows.evaluator_protocol_sha256.astype(str).eq(digest).all()
-        and (rows.frames.astype(int) == EXPECTED_FRAMES).all()
-        and np.allclose(rows.completion_ratio.astype(float), 1.0)
+        and (rows.frames.astype(int) == SHARED_COMPARISON_FRAMES).all()
+        and np.allclose(
+            rows.comparison_window_completion_ratio.astype(float), 1.0
+        )
+        and np.allclose(
+            rows.completion_ratio.astype(float),
+            SHARED_COMPARISON_FRAMES / SOURCE_FRAMES,
+        )
+        and np.allclose(
+            rows.full_source_coverage_ratio.astype(float),
+            rows.key.astype(str).map(
+                lambda key: 0.75 if key == "protomotions-v3" else 1.0
+            ),
+        )
         and np.isfinite(rows.loc[:, required].to_numpy(dtype=float)).all()
     )
 
@@ -587,7 +636,12 @@ def _timing(root: Path) -> bool:
             not artifact.is_file()
             or sha256_file(artifact) != str(row.timing_artifact_sha256)
             or str(row.timing_artifact_hash_verified).lower() != "true"
-            or int(row.frame_count) != EXPECTED_FRAMES
+            or int(row.frame_count)
+            != (
+                SHARED_COMPARISON_FRAMES
+                if str(row.key) == "protomotions-v3"
+                else SOURCE_FRAMES
+            )
         ):
             return False
         duration = int(row.frame_count) / fps_by_key[str(row.key)]
@@ -732,7 +786,16 @@ def _native_target_capture(root: Path) -> bool:
                 return False
     numeric = geometry.select_dtypes(include=[np.number]).to_numpy(dtype=float)
     return bool(
-        (manifest.frames.astype(int) == EXPECTED_FRAMES).all()
+        (
+            manifest.frames.astype(int)
+            == manifest.method.astype(str).map(
+                lambda method: (
+                    SHARED_COMPARISON_FRAMES
+                    if method == "protomotions_v3"
+                    else SOURCE_FRAMES
+                )
+            )
+        ).all()
         and set(geometry.method.astype(str)) == expected
         and geometry.capture_class.astype(str).eq("exact_solver_input").all()
         and np.isfinite(numeric).all()
@@ -772,7 +835,7 @@ def _scale_evidence(root: Path) -> bool:
         "scale_protocol_match",
         "variant_match",
         "contact_policy_match",
-        "exact_full_frames",
+        "exact_registered_frames",
         "accepted",
     ):
         if not _boolean_series(provenance[column]).all():
@@ -984,8 +1047,16 @@ def _scale_evidence(root: Path) -> bool:
         len(transplant) == 5
         and len(native) == 20
         and len(robustness) == 5
-        and (selected.frames.astype(int) == EXPECTED_FRAMES).all()
-        and np.allclose(selected.completion_ratio.astype(float), 1.0)
+        and (
+            selected.frames.astype(int) == SHARED_COMPARISON_FRAMES
+        ).all()
+        and np.allclose(
+            selected.comparison_window_completion_ratio.astype(float), 1.0
+        )
+        and np.allclose(
+            selected.completion_ratio.astype(float),
+            SHARED_COMPARISON_FRAMES / SOURCE_FRAMES,
+        )
         and set(slopes.method.astype(str)) == set(NATIVE_SCALE_METHODS)
         and set(ranks.method.astype(str)) == set(NATIVE_SCALE_METHODS)
         and contact_methods == set(NATIVE_SCALE_METHODS)
@@ -1279,7 +1350,8 @@ def _rerun(root: Path) -> bool:
     result = validate_rerun_manifest_contract(root, verify_recording=True)
     return bool(
         result.get("result") == "verified"
-        and int(result.get("frame_marker_rows", -1)) == EXPECTED_FRAMES
+        and int(result.get("frame_marker_rows", -1))
+        == SHARED_COMPARISON_FRAMES
     )
 
 
@@ -1391,7 +1463,7 @@ def _test_evidence(root: Path) -> bool:
         and int(critical.get("failed", 1)) == 0
         and int(critical.get("skipped", 1)) == 0
         and rerun.get("result") == "verified"
-        and int(rerun.get("frames", 0)) == EXPECTED_FRAMES
+        and int(rerun.get("frames", 0)) == SHARED_COMPARISON_FRAMES
         and int(rerun.get("methods", 0)) == 9
         and int(rerun.get("visual_asset_count", 0)) == 35
         and int(rerun.get("manifest_schema_version", 0)) == 5

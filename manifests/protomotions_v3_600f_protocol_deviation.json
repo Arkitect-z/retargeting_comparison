@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "excluded_protocol_deviation",
+  "method": "protomotions-v3",
+  "discovered_at_utc": "2026-07-23T06:25:00+00:00",
+  "reason": "The benchmark overrode the official fixed 450-frame trajectory contract with 600 frames.",
+  "official_contract": {
+    "operation": "trim_or_pad",
+    "duration_s": 15,
+    "fps": 30,
+    "frames": 450,
+    "documentation": "https://nvlabs.github.io/ProtoMotions/tutorials/workflows/retargeting_pyroki.html",
+    "frozen_upstream_script": "external/ProtoMotions/pyroki/batch_retarget_to_g1_from_keypoints.py"
+  },
+  "excluded_evidence": {
+    "cuda_600_stderr": {
+      "path": "runs/dance1_subject1_f000000_000600/protomotions-v3/logs/native.cuda-600f.stderr.log",
+      "sha256": "df74c72373de1d78112fcedb46218cb0c0d3b0a1784c70a517c8b49c56889f23",
+      "failure": "RESOURCE_EXHAUSTED: requested 131072 shared-memory bytes; available 101376"
+    },
+    "cpu_campaign_directory": "runs/dance1_subject1_f000000_000600/protomotions-v3-v2",
+    "campaign_summary": "manifests/protomotions_v3_campaign.formal_timing_v2.json",
+    "stage1_campaign_state": "manifests/stage1_timing_campaign.json"
+  },
+  "corrected_diagnostic": {
+    "path": "runs/dance1_subject1_f000000_000600/protomotions-v3-official450-cuda-diagnostic-v2/canonical_g1.npz",
+    "sha256": "fc0259c5ae13cce04e13ef6d55ddaaeed45bcf9662821f0f59c5b1699534ea12",
+    "evidence_path": "runs/dance1_subject1_f000000_000600/protomotions-v3-official450-cuda-diagnostic-v2/evidence.json",
+    "evidence_sha256": "07b4da35a738f34ca5205d825011a6eff8bb93ee1bf342ac40857d7f19360cc7",
+    "frames": 450,
+    "native_contract_completion_ratio": 1.0,
+    "full_source_coverage_ratio": 0.75,
+    "device": "cuda",
+    "cold_process_wall_time_s": 511.47944333200576,
+    "cold_in_memory_wall_time_s": 505.26250507100485,
+    "solver_iterations": 103,
+    "formal_result": false
+  },
+  "publication_policy": {
+    "exclude_all_600_frame_protomotions_v3_artifacts": true,
+    "formal_revision": "protomotions-v3-v3",
+    "shared_quality_frame_range": [
+      0,
+      450
+    ],
+    "retain_without_overwrite": true
+  }
+}

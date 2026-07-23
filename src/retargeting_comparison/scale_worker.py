@@ -238,6 +238,7 @@ def native_output_is_current(
 
     root_multiplier, local_multiplier = WITHIN_METHOD_VARIANTS[variant]
     expected = native_expected_provenance(root, method)
+    expected_frames = 450 if method == "protomotions_v3" else len(human.timestamps)
     metadata = motion.metadata
     solver_field = str(expected["solver_robot_asset_field"])
     asset_match = (
@@ -273,9 +274,9 @@ def native_output_is_current(
         and isinstance(metadata.get("scale_runtime_environment"), dict)
         and metadata["scale_runtime_environment"].get("environment_name")
         == scale_execution_contract(root, method)["environment_name"]
-        and len(motion.qpos) == len(human.timestamps)
+        and len(motion.qpos) == expected_frames
         and np.array_equal(
-            motion.source_frame_idx, np.arange(len(human.timestamps))
+            motion.source_frame_idx, np.arange(expected_frames)
         )
         and bool(np.asarray(motion.valid, dtype=bool).all())
     )
@@ -336,7 +337,7 @@ def _complete_protomotions_v3_campaign(
     if not keypoints.is_file():
         raise FileNotFoundError(f"Missing audited ProtoMotions v3 input: {keypoints}")
     timing_summary_path = (
-        root / "manifests/protomotions_v3_campaign.formal_timing_v2.json"
+        root / "manifests/protomotions_v3_campaign.formal_timing_v3.json"
     )
     if not timing_summary_path.is_file():
         raise FileNotFoundError(

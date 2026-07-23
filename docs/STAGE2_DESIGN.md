@@ -7,11 +7,13 @@ user has explicitly authorized Stage 2; that
 authorization is recorded in `configs/stage2.yaml`. Execution is nevertheless
 conditional on a new Stage 1 validation manifest whose decision is `GO`, all
 its checks being true, **and an independent byte-level audit of all six formal
-600-frame Stage 1 outputs**. The latter verifies exact method identity, the
-canonical Pilot source fps,
-frames 0–599, finite qpos/timing, every `valid=True`, completion status, and
-SHA-256. A missing integration cannot disappear through a readiness rule; only
-the later pre-registered budget policy can exclude v3.
+Stage 1 output contracts**. Five methods require frames 0–599; ProtoMotions v3
+requires its documented fixed 450-frame output on source frames 0–449, with
+native completion 450/450 and full-source coverage 450/600. The gate verifies
+exact method identity, canonical Pilot source fps, finite qpos/timing, every
+`valid=True`, completion metadata, and SHA-256. A missing integration cannot
+disappear through a readiness rule; only the later pre-registered budget
+policy can exclude v3.
 
 The limits are 48 hours wall time and 200 GB retained storage. Runtime guards
 stop new work and terminate the entire subprocess group at 98% of either limit,
@@ -337,11 +339,13 @@ selected design.
    measured concurrency-efficiency claim. The 1.5× factor covers moderate
    contention; a Stage 1 concurrency probe should replace the estimate if it
    reveals worse scaling.
-3. ProtoMotions v3 optimizes whole trajectories, so very long source files may
-   have nonlinear memory/runtime behavior relative to the 600-frame Pilot. Its
-   accepted estimate must therefore remain conservative. If its Full-LAFAN
-   projection closes the hard gate, the registered policy excludes v3 from
-   Stage 2 before any source reduction and records that exclusion explicitly.
+3. ProtoMotions v3 optimizes a fixed 450-frame trajectory at once. Stage 2
+   cannot silently feed arbitrary full-length LAFAN files or extrapolate from
+   the superseded 600-frame protocol deviation. Its accepted estimate must use
+   the official trim/pad policy and remain conservative. If that registered
+   full-corpus operating point closes the hard gate, the policy excludes v3
+   from Stage 2 before any source reduction and records the exclusion
+   explicitly.
 4. The frame-0 shared-landmark least-squares scale is sequence-specific and still
    mildly pose-sensitive. It is frozen before any method result and is the
    registered controlled arm; a rest-skeleton or multi-frame robust estimator

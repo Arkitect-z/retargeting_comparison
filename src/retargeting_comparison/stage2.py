@@ -717,9 +717,18 @@ def _validate_stage1_timing_evidence(
                 f"Stage-1 accepted RunManifest/revision binding failed for {name}"
             )
         motion = CanonicalG1.load(output_path)
+        registered_frames = int(
+            formal_entry.get(
+                "expected_output_frames", campaign_plan["source_frames"]
+            )
+        )
+        completion_field = str(
+            formal_entry.get("completion_metadata_field", "completion_status")
+        )
+        registered_completion = motion.metadata.get(completion_field)
         if (
-            motion.metadata.get("completion_status") != "succeeded"
-            or len(motion.qpos) != int(campaign_plan["source_frames"])
+            registered_completion != "succeeded"
+            or len(motion.qpos) != registered_frames
             or str(
                 motion.metadata.get("canonical_source_sha256")
                 or motion.metadata.get("source_sha256")
@@ -747,12 +756,13 @@ def _validate_stage1_timing_evidence(
         measured_repetitions = timing.get(
             "measured_warm", timing.get("measured", [])
         )
+        method_duration_s = registered_frames / float(motion.fps)
         expected_raw_rtf = [
-            float(item["steady_end_to_end_total_s"]) / source_duration_s
+            float(item["steady_end_to_end_total_s"]) / method_duration_s
             for item in measured_repetitions
         ]
         expected_native_rtf = [
-            float(item["native_total_s"]) / source_duration_s
+            float(item["native_total_s"]) / method_duration_s
             for item in measured_repetitions
         ]
         raw_rtf = [float(value) for value in timing["end_to_end_rtf_raw"]]
@@ -2113,12 +2123,20 @@ def _validate_stage1_formal_outputs(
             raise Stage2Error(
                 f"Stage-1 method identity mismatch for {method}: {metadata_method!r}"
             )
+        registered_frames = int(
+            entry.get("expected_output_frames", expected_frames)
+        )
+        completion_field = str(
+            entry.get("completion_metadata_field", "completion_status")
+        )
+        registered_completion = motion.metadata.get(completion_field)
         if (
-            qpos.shape != (expected_frames, 36)
+            qpos.shape != (registered_frames, 36)
             or not all(bool(value) for value in motion.valid)
-            or list(map(int, motion.source_frame_idx)) != list(range(expected_frames))
+            or list(map(int, motion.source_frame_idx))
+            != list(range(registered_frames))
             or abs(float(motion.fps) - expected_fps) > 1e-9
-            or str(motion.metadata.get("completion_status")) != "succeeded"
+            or str(registered_completion) != "succeeded"
         ):
             raise Stage2Error(
                 f"Stage-1 formal output timeline/completion contract failed for {method}"
@@ -2140,7 +2158,7 @@ def _validate_stage1_formal_outputs(
             "path": _portable(root, path),
             "sha256": sha256_file(path),
             "bytes": path.stat().st_size,
-            "frames": expected_frames,
+            "frames": registered_frames,
             "fps": expected_fps,
             "metadata_method": metadata_method,
             "source_sha256": source_hash or None,

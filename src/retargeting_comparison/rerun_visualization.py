@@ -30,6 +30,9 @@ from .rotations import quaternion_wxyz_to_matrix, yaw_from_matrix
 from .schemas import CanonicalG1, CanonicalHuman
 
 
+SHARED_COMPARISON_FRAMES = 450
+
+
 @dataclass(frozen=True)
 class MethodStyle:
     key: str
@@ -421,7 +424,11 @@ class Stage1Visualization:
 
     @property
     def frame_count(self) -> int:
-        return len(self.human.timestamps)
+        return min(
+            SHARED_COMPARISON_FRAMES,
+            len(self.human.timestamps),
+            *(len(method.motion.qpos) for method in self.methods.values()),
+        )
 
 
 def _parse_metric(value: str) -> float:
@@ -539,7 +546,10 @@ def _build_evidence_binding(
             evaluator["robot_xml_sha256"]
         ):
             raise ValueError(f"{key} {owner} is bound to a different evaluator robot")
-        if int(float(value.get("frames", -1))) != len(human.timestamps):
+        expected_comparison_frames = min(
+            SHARED_COMPARISON_FRAMES, len(human.timestamps)
+        )
+        if int(float(value.get("frames", -1))) != expected_comparison_frames:
             raise ValueError(f"{key} {owner} has the wrong frame count")
 
     if sha256_file(evaluator_robot_path) != str(evaluator["robot_xml_sha256"]):
@@ -647,11 +657,23 @@ def load_stage1_visualization(
         assert publication_binding is not None
         motion = CanonicalG1.load(path)
         motion.validate(source_frame_count=len(human.timestamps))
-        if not np.array_equal(motion.source_frame_idx, np.arange(len(human.timestamps))):
-            raise ValueError(f"{style.key} does not cover the complete source frame timeline")
+        expected_frames = (
+            SHARED_COMPARISON_FRAMES
+            if style.key == "protomotions-v3"
+            else len(human.timestamps)
+        )
+        if (
+            len(motion.qpos) != expected_frames
+            or not np.array_equal(
+                motion.source_frame_idx, np.arange(expected_frames)
+            )
+        ):
+            raise ValueError(
+                f"{style.key} does not cover its registered source-frame contract"
+            )
         link_transforms = kinematics.motion_link_transforms(motion.qpos)
         positions = kinematics._positions_from_link_transforms(link_transforms)
-        metrics = _load_metrics(metrics_path, len(human.timestamps))
+        metrics = _load_metrics(metrics_path, SHARED_COMPARISON_FRAMES)
         if not all(np.isfinite(value).all() for value in metrics.values()):
             raise ValueError(f"{style.key} visualization metrics contain missing or non-finite values")
         publication_row, publication_path = publication_binding
@@ -1141,7 +1163,7 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
         )
 
     world_human = _world_aligned_human(data)
-    human_root_path = world_human[:, 0]
+    human_root_path = world_human[: data.frame_count, 0]
     rr.log(
         "world/source-human/root_path",
         rr.LineStrips3D([human_root_path], colors=SOURCE_STYLE.color, radii=0.008),
@@ -1182,6 +1204,9 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
             "",
             f"- Sequence: `{data.sequence['sequence_id']}`",
             f"- Frames: {data.frame_count}",
+            "- Shared comparison window: source frames [0, 450)",
+            "- ProtoMotions v3 official native contract: 450/450; full-source coverage: 450/600",
+            "- No visualization padding, interpolation, or trajectory stitching",
             f"- FPS: {data.human.fps:.6f}",
             f"- Human display scale: {data.human_scale:.6f}",
             f"- Loaded G1 trajectories: {len(data.methods)}",

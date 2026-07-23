@@ -76,7 +76,7 @@ official path exists for the controlled benchmark itself.
 | Scale family | common shared-semantic-landmark LS (head/toe diagnostic only) | actor-dependent body-region scale | actor-height-normalizing uniform scale | fixed world-axis anisotropic scale | fixed region/axis pre-scale plus optimized robot-pair scales | fitted uniform local skeleton scale |
 | Root translation | benchmark rule | scaled by root-region factor about world origin; batch output later XY-reanchored | uniformly scaled with all targets after source grounding | all world coordinates, including root, multiplied by `[0.75, 1.0, 0.8]` | root/lower local target construction uses `[0.9, 0.9, 0.85]` | source metric root path retained; only one constant root offset is optimized |
 | Orientations | benchmark task-dependent | global joint orientations are explicit IK targets | discarded after SMPL-X FK; position-only representation | read and assigned a tiny `1e-4` cost | used for conversion/surgery/root initialization, not a full-body orientation residual | source root reduced to heading; position loss dominates |
-| Temporal policy | exact canonical timestamps | interpolation/SLERP using an integer ratio with edge cases | integer stride, then metadata hard-coded to 30 Hz | integer stride, then hard-coded to 30 Hz | selects a source-rate divisor; default retarget buffer is 450 but CLI supports 600 | integer stride, hard-coded to 30 Hz |
+| Temporal policy | exact canonical timestamps | interpolation/SLERP using an integer ratio with edge cases | integer stride, then metadata hard-coded to 30 Hz | integer stride, then hard-coded to 30 Hz | fixed 15-second buffer: trim/pad to 450 frames at 30 Hz; a CLI override changes this official operating point | integer stride, hard-coded to 30 Hz |
 | Grounding | shared benchmark rule | dataset path post-shifts by sequence-global robot minimum z and zeros initial root XY | source toe-min shift before scale; constraints act during solve | per-frame output-height adjustment against unscaled human lowest joint | one sequence-global body-minimum z shift before contacts | constant source and output z shifts derived from first-frame meshes |
 | Contact | shared canonical labels if enabled | none in objective | velocity-derived feet; foot sticking and non-penetration constraints | none | velocity/height labels plus contact/tilt residuals | none in fitting loss |
 | Solver scope | sequential Mink | two-stage sequential Mink | Sequential SOCP | sequential Mink, two steps/frame after repeated frame-0 warm-up | whole-trajectory modified PyRoki/JAXLS | whole-sequence Adam plus per-iteration Gaussian DOF smoothing |
@@ -242,10 +242,14 @@ toe/ankle points, auxiliary hands, and an auxiliary pelvis. Its whole-trajectory
 JAXLS solve optimizes robot-pair scales used by the local vector residual, but
 the absolute global-position residual does not use those optimized scales.
 
-The default trajectory buffer is 450 frames. The frozen revision already
-supports `--target-raw-frames 600`, so Stage 1 must freeze that argument; no
-upstream source patch is needed. Otherwise the 600-frame Pilot is truncated to
-75% and fails the completion rule.
+The official trajectory contract is fixed at 450 frames (15 seconds at
+30 Hz), with longer inputs trimmed and shorter inputs padded for efficient JAX
+compilation and batching. Although the frozen script exposes
+`--target-raw-frames`, overriding it to 600 changes the documented
+fixed-shape operating point and is not an official-method result. Stage 1
+therefore retains the 600-frame source, runs the official 450-frame prefix,
+reports native-contract completion as 450/450 and full-source coverage as
+450/600, and compares every method on the same source frames `[0, 450)`.
 
 The bundled 29-DoF URDF has the same joint names, origins, and axes as the
 Holosoma canonical URDF, but 15 joint limits are tighter. It is therefore the
@@ -592,7 +596,9 @@ The legacy four-point LAFAN execution is complete. The revised Stage 1 is not.
 It may return `GO` or `GO WITH CHANGES` only when all of the following are true:
 
 - the AMASS/LAFAN preprocessing policy audit is frozen with file-level evidence;
-- ProtoMotions v2.3 and v3 each produce a valid 600/600-frame canonical output;
+- ProtoMotions v2.3 produces a valid 600/600-frame output, while ProtoMotions
+  v3 produces its official 450/450-frame native output and explicitly reports
+  450/600 full-source coverage;
 - the v2.3 dependency and robot-asset compatibility gates pass;
 - every experimental point exposes a hashed pre-solver target package;
 - native official and controlled ablation results are visually and

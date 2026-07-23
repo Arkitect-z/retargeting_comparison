@@ -53,6 +53,6 @@ STAGE1_RUN_DIRECTORIES = {
     "gmr": "gmr-v3",
     "omniretarget": "omniretarget-v3",
     "protomotions-v2.3": "protomotions-v2.3-v3",
-    "protomotions-v3": "protomotions-v3-v2",
+    "protomotions-v3": "protomotions-v3-v3",
     "unitree-reference": "unitree-attributed-reference",
 }

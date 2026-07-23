@@ -66,12 +66,14 @@ stage1_gate:
       registered_directory: runs/dance1_subject1_f000000_000600/protomotions-v2.3-v3
       metadata_methods: [protomotions_v2_3_mink, protomotions-v2.3]
     protomotions-v3:
-      path: runs/dance1_subject1_f000000_000600/protomotions-v3-v2/canonical_g1.npz
-      revision: protomotions-v3-v2
+      path: runs/dance1_subject1_f000000_000600/protomotions-v3-v3/canonical_g1.npz
+      revision: protomotions-v3-v3
       run_manifest: manifests/runs/dance1_subject1_f000000_000600__protomotions-v3.json
       run_id: dance1_subject1_f000000_000600__protomotions-v3
-      registered_directory: runs/dance1_subject1_f000000_000600/protomotions-v3-v2
+      registered_directory: runs/dance1_subject1_f000000_000600/protomotions-v3-v3
       metadata_methods: [protomotions_v3, protomotions-v3]
+      expected_output_frames: 450
+      completion_metadata_field: native_contract_completion_status
 
 budget:
   wall_time_hours: 48.0
@@ -324,14 +326,14 @@ methods:
     environment: egoallo
     workers: 1
     readiness: stage1_output
-    readiness_path: runs/dance1_subject1_f000000_000600/protomotions-v3-v2/canonical_g1.npz
+    readiness_path: runs/dance1_subject1_f000000_000600/protomotions-v3-v3/canonical_g1.npz
     readiness_manifest: manifests/runs/dance1_subject1_f000000_000600__protomotions-v3.json
     rtf: null
     startup_s_per_sequence: null
     retained_bytes_per_frame: 3000
     retained_bytes_per_sequence: 65536
     estimate_source: bound_stage1_formal_timing_campaign
-    registered_revision: protomotions-v3-v2
+    registered_revision: protomotions-v3-v3
     policy_files: [configs/protomotions_v3.yaml]
     scale_policy: unchanged_benchmark_port_policy
   unitree-reference:

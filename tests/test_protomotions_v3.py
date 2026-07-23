@@ -40,7 +40,9 @@ from retargeting_comparison.io_utils import sha256_file
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_native_command_freezes_600_frames_and_formal_timing(tmp_path) -> None:
+def test_native_command_preserves_official_450_frames_and_formal_timing(
+    tmp_path,
+) -> None:
     command = build_native_command(
         python="/usr/bin/python3",
         repo_root=ROOT,
@@ -49,7 +51,7 @@ def test_native_command_freezes_600_frames_and_formal_timing(tmp_path) -> None:
         native_output=tmp_path / "native.npz",
         timing_json=tmp_path / "timing.json",
     )
-    assert command[command.index("--target-raw-frames") + 1] == "600"
+    assert command[command.index("--target-raw-frames") + 1] == "450"
     assert command[command.index("--warmup-runs") + 1] == "1"
     assert command[command.index("--measured-runs") + 1] == "3"
     assert command[command.index("--source") + 1] == str(
@@ -64,11 +66,20 @@ def test_cpu_native_environment_is_explicit_and_suppresses_cuda_probe() -> None:
     assert env["JAX_SKIP_CUDA_CONSTRAINTS_CHECK"] == "1"
 
 
+def test_cuda_native_environment_keeps_cpu_backend_for_pyroki_callbacks() -> None:
+    env = native_environment(ROOT, "/usr/bin/python3", device="cuda")
+    assert env["JAX_PLATFORMS"] == "cuda,cpu"
+    assert env["XLA_PYTHON_CLIENT_PREALLOCATE"] == "false"
+    assert "CUDA_VISIBLE_DEVICES" not in env or env["CUDA_VISIBLE_DEVICES"] != ""
+
+
 def test_campaign_orders_formal_timing_then_four_pre_solver_variants(tmp_path) -> None:
     jobs = campaign_jobs(tmp_path, "pilot")
     assert jobs[0].name == "formal_timing"
     assert jobs[0].warmup_runs == 1
     assert jobs[0].measured_runs == 3
+    assert jobs[0].target_raw_frames == 450
+    assert jobs[0].device == "cuda"
     assert [job.name for job in jobs[1:]] == list(SCALE_VARIANTS)
     assert all(job.warmup_runs == 0 and job.measured_runs == 1 for job in jobs[1:])
 
@@ -101,7 +112,7 @@ def _campaign_witness(
         "cpu_affinity": [0],
         "timing_artifact_sha256": "a" * 64,
     }
-    qpos = np.zeros((len(human.timestamps), 36), dtype=np.float64)
+    qpos = np.zeros((job.target_raw_frames, 36), dtype=np.float64)
     qpos[:, 3] = 1.0
     motion = CanonicalG1(
         qpos=qpos,
@@ -112,7 +123,12 @@ def _campaign_witness(
         metadata={
             "method": "protomotions_v3",
             "upstream_commit": "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c",
-            "completion_status": "succeeded",
+            "completion_status": "incomplete",
+            "full_source_completion_status": "incomplete",
+            "full_source_completion_ratio": 0.75,
+            "native_contract_completion_status": "succeeded",
+            "native_contract_completion_ratio": 1.0,
+            "native_contract_frame_count": job.target_raw_frames,
             "canonical_source_sha256": human.source_sha256,
             "canonical_source_file_sha256": sha256_file(source),
             "config_sha256": sha256_file(ROOT / "configs/protomotions_v3.yaml"),
@@ -338,7 +354,7 @@ def test_solver_log_diagnostics_separates_repeated_calls_and_flags_ceiling(
     assert diagnostics["any_configured_iteration_ceiling_reached"] is True
 
 
-def test_frozen_keypoint_adapter_is_finite_metric_and_600_frames() -> None:
+def test_frozen_keypoint_adapter_is_finite_metric_and_retains_600_source_frames() -> None:
     path = (
         ROOT
         / "source_adapters/protomotions_v3/dance1_subject1_f000000_000600/keypoints.npy"
@@ -346,7 +362,7 @@ def test_frozen_keypoint_adapter_is_finite_metric_and_600_frames() -> None:
     if not path.is_file():
         pytest.skip("Generated source adapter is intentionally not committed")
     audit = validate_keypoint_input(path)
-    assert audit["frames"] == TARGET_RAW_FRAMES
+    assert audit["frames"] == 600
     assert audit["keypoints"] == 18
     assert audit["coordinate_unit"] == "metre"
     assert audit["max_rotation_orthogonality_error"] < 1e-12
@@ -510,6 +526,49 @@ def test_native_output_rejects_nonfinite_and_marks_short_output_incomplete(tmp_p
     _native_file(short, 2)
     motion = convert_native_output(short, source_frame_count=600)
     assert motion.metadata["completion_status"] == "incomplete"
+
+
+def test_official_450_output_separates_native_and_full_source_completion(
+    tmp_path,
+) -> None:
+    native = tmp_path / "native.npz"
+    np.savez_compressed(
+        native,
+        base_frame_pos=np.zeros((TARGET_RAW_FRAMES, 3)),
+        base_frame_wxyz=np.tile(
+            np.asarray([1.0, 0.0, 0.0, 0.0]), (TARGET_RAW_FRAMES, 1)
+        ),
+        joint_angles=np.zeros((TARGET_RAW_FRAMES, 29)),
+        fps=30.0,
+        source_fps=30.0,
+        subsample_factor=1,
+    )
+    motion = convert_native_output(
+        native,
+        source_frame_count=600,
+        native_contract_frame_count=TARGET_RAW_FRAMES,
+    )
+    assert len(motion.qpos) == 450
+    assert motion.metadata["completion_status"] == "incomplete"
+    assert motion.metadata["full_source_completion_ratio"] == 0.75
+    assert motion.metadata["native_contract_completion_status"] == "succeeded"
+    assert motion.metadata["native_contract_completion_ratio"] == 1.0
+    assert motion.metadata["official_fixed_trajectory_policy"]["frames"] == 450
+
+
+def test_frozen_upstream_script_default_matches_official_450_contract() -> None:
+    script = (
+        ROOT
+        / "external/ProtoMotions/pyroki/batch_retarget_to_g1_from_keypoints.py"
+    )
+    if not script.is_file():
+        pytest.skip("Frozen ProtoMotions checkout is intentionally external")
+    text = script.read_text(encoding="utf-8")
+    marker = 'parser.add_argument(\n        "--target-raw-frames",'
+    start = text.index(marker)
+    declaration = text[start : start + 240]
+    assert "default=450" in declaration
+    assert TARGET_RAW_FRAMES == 450
 
 
 def test_canonical_mujoco_fk_accepts_converted_qpos(tmp_path) -> None:

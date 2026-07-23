@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 
 from .io_utils import atomic_write_json, sha256_file
+from .protomotions_v3 import TARGET_RAW_FRAMES
 from .schemas import CanonicalG1, CanonicalHuman, RunManifest, RunStatus
 
 
@@ -28,7 +29,7 @@ SCALE_VARIANTS = {
     "local_minus_5": (1.0, 0.95),
     "local_plus_5": (1.0, 1.05),
 }
-FORMAL_RUN_DIRECTORY = "protomotions-v3-v2"
+FORMAL_RUN_DIRECTORY = "protomotions-v3-v3"
 
 
 def _variant_name(root_multiplier: float, local_multiplier: float) -> str:
@@ -75,7 +76,8 @@ class CampaignJob:
     evidence: Path
     warmup_runs: int
     measured_runs: int
-    target_raw_frames: int = 600
+    target_raw_frames: int = TARGET_RAW_FRAMES
+    device: str = "cuda"
     root_multiplier: float = 1.0
     local_multiplier: float = 1.0
 
@@ -135,8 +137,19 @@ def _valid_output(
     from .scale_worker import scale_execution_contract
 
     if not (
-        len(motion.qpos) == len(human.timestamps)
-        and motion.metadata.get("completion_status") == "succeeded"
+        len(motion.qpos) == job.target_raw_frames
+        and motion.metadata.get("completion_status") == "incomplete"
+        and motion.metadata.get("full_source_completion_status") == "incomplete"
+        and motion.metadata.get("full_source_completion_ratio")
+        == job.target_raw_frames / len(human.timestamps)
+        and motion.metadata.get("native_contract_completion_status") == "succeeded"
+        and motion.metadata.get("native_contract_completion_ratio") == 1.0
+        and motion.metadata.get("native_contract_frame_count")
+        == job.target_raw_frames
+        and np.array_equal(
+            motion.source_frame_idx,
+            np.arange(job.target_raw_frames, dtype=np.int64),
+        )
         and bool(np.all(motion.valid))
         and motion.metadata.get("formal_timing_boundary")
         == "canonical_source_file_to_canonical_g1_in_memory"
@@ -283,7 +296,7 @@ def _worker_command(
         "--measured-runs",
         str(job.measured_runs),
         "--device",
-        "cpu",
+        job.device,
         "--root-scale-multiplier",
         str(job.root_multiplier),
         "--local-scale-multiplier",
@@ -313,7 +326,7 @@ def run_protomotions_v3_smoke(
     keypoints = (
         root / "source_adapters/protomotions_v3" / sequence_id / "keypoints.npy"
     )
-    run_dir = root / "runs" / sequence_id / "protomotions-v3-v2-smoke2"
+    run_dir = root / "runs" / sequence_id / "protomotions-v3-v3-smoke2"
     job = CampaignJob(
         name="smoke2",
         output=run_dir / "canonical_g1.npz",
@@ -490,8 +503,13 @@ def _standard_timing(
             "threads": 1,
             "cpu_affinity": measured[0].get("cpu_affinity"),
             "visualization": False,
-            "device": "cpu",
-            "trajectory_scope": "whole 600-frame trajectory",
+            "device": formal_motion.metadata.get("device"),
+            "trajectory_scope": (
+                "official fixed 450-frame whole trajectory; source frames 0:450"
+            ),
+            "frozen_source_frames": 600,
+            "official_native_contract_frames": TARGET_RAW_FRAMES,
+            "full_source_coverage_ratio": TARGET_RAW_FRAMES / 600,
             "end_to_end_boundary": "canonical_source_file_to_canonical_g1_in_memory",
             "native_core_boundary": "native_input_ready_to_native_g1_in_memory",
             "intermediate_and_final_artifact_writes_excluded": True,
@@ -621,7 +639,7 @@ def main(argv: list[str] | None = None) -> int:
         human=human,
         source_path=source,
     ):
-        raise SystemExit("Independent CPU cold output is missing or invalid")
+        raise SystemExit("Independent CUDA cold output is missing or invalid")
 
     cold_snapshot = (
         root / "runs" / args.sequence_id / FORMAL_RUN_DIRECTORY / "cold/evidence.json"
@@ -634,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": "running",
         "sequence_id": args.sequence_id,
         "source_frames": source_frames,
-        "device": "cpu",
+        "device": "cuda",
         "started_at_utc": campaign_started_at,
         "independent_cold": _artifact(cold_output, root),
         "independent_cold_evidence": str(cold_snapshot.relative_to(root)),
@@ -649,13 +667,17 @@ def main(argv: list[str] | None = None) -> int:
             }
         },
         "jobs": [],
-        "gpu_hardware_compatibility_evidence": {
+        "superseded_600_frame_gpu_hardware_evidence": {
             "status": "failed",
             "reason": "XLA kernel requested 131072 shared-memory bytes; RTX 3090 Ti exposed 101376",
             "stderr_log": (
                 f"runs/{args.sequence_id}/protomotions-v3/logs/native.cuda-600f.stderr.log"
             ),
             "substitute_output_used": False,
+            "interpretation": (
+                "Benchmark protocol deviation: 600 overrides the upstream fixed-450 "
+                "contract and is excluded from the official operating point."
+            ),
         },
     }
     atomic_write_json(summary_path, summary)
@@ -873,24 +895,34 @@ def main(argv: list[str] | None = None) -> int:
         environment="conda:egoallo (capture orchestrator)",
         repo_commit=repo_commit,
         config_sha256=sha256_file(root / "configs/protomotions_v3.yaml"),
-        device="CPU; threads=1; whole-trajectory JAXLS",
+        device=(
+            "NVIDIA RTX 3090 Ti CUDA with CPU callback backend; "
+            "host threads=1; whole-trajectory JAXLS"
+        ),
         started_at=summary["started_at_utc"],
         finished_at=summary["finished_at_utc"],
         wall_time_s=float(timing["cold_process_wall_s"] + timing["warm_process_wall_s"]),
         exit_code=0,
         stdout_log=str(
-            (jobs[0].work_dir / "logs/native.cpu-600f.stdout.log").relative_to(root)
+            (
+                jobs[0].work_dir
+                / f"logs/native.{jobs[0].device}-{jobs[0].target_raw_frames}f.stdout.log"
+            ).relative_to(root)
         ),
         stderr_log=str(
-            (jobs[0].work_dir / "logs/native.cpu-600f.stderr.log").relative_to(root)
+            (
+                jobs[0].work_dir
+                / f"logs/native.{jobs[0].device}-{jobs[0].target_raw_frames}f.stderr.log"
+            ).relative_to(root)
         ),
         output_path=str(final_output.relative_to(root)),
         output_sha256=sha256_file(final_output),
         source_sha256=human.source_sha256,
         timing_path=str(timing_path.relative_to(root)),
         message=(
-            "Official whole-trajectory solver completed on CPU; the frozen GPU attempt "
-            "is retained separately as hardware compatibility evidence."
+            "Official fixed-450 whole-trajectory solver completed on CUDA. The prior "
+            "600-frame CUDA/CPU benchmark intervention is excluded and retained only "
+            "as protocol-deviation evidence."
         ),
     )
     manifest.save(manifest_path)

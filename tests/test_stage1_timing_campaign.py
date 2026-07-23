@@ -105,7 +105,10 @@ def test_plan_is_exactly_sequential_and_proto_requires_fresh_timing() -> None:
     assert len({job["index"] for job in plan["jobs"]}) == 6
     assert plan["protocol"]["overlapping_formal_jobs_forbidden"] is True
     proto = plan["jobs"][2]
-    assert proto["registered_output"] == "protomotions-v3-v2"
+    assert proto["registered_output"] == "protomotions-v3-v3"
+    assert proto["command"][proto["command"].index("--summary-json") + 1] == (
+        "manifests/protomotions_v3_campaign.formal_timing_v3.json"
+    )
     assert "--run-fresh-cold" in proto["command"]
     assert "--timing-only" in proto["command"]
     assert plan["jobs"][0]["command"][-4:] == [

@@ -2,9 +2,11 @@
 
 This module is intentionally independent from :mod:`reporting`.  It consumes
 only frozen canonical outputs and evidence tables; it never launches a
-retargeter.  A build is all-or-nothing: six required 600-frame operating
-points, the three Sparse seeds, the external Unitree-attributed reference,
-the complete scale-policy matrix, and four interaction runs must all exist.
+retargeter. A build is all-or-nothing: six required operating points evaluated
+on the shared 450-frame prefix, the three Sparse seeds, the external
+Unitree-attributed reference, the complete scale-policy matrix, and four
+interaction runs must all exist. Full 600-frame coverage is reported
+separately and is never fabricated for a shorter official native contract.
 
 The Unitree-attributed corpus is treated as an untimed, external reference.
 Its repository provenance does not establish that it is official, ground
@@ -42,10 +44,18 @@ from .scale_metric_registry import (
     derive_registered_rank_stability,
     derive_registered_scale_slopes,
 )
-from .schemas import CanonicalG1, CanonicalHuman, RunManifest
+from .schemas import (
+    CanonicalG1,
+    CanonicalHuman,
+    RunManifest,
+    canonical_g1_source_prefix_view,
+)
 
 
-EXPECTED_FRAMES = 600
+SOURCE_FRAMES = 600
+SHARED_COMPARISON_FRAMES = 450
+# Backwards-compatible public name for the frozen source length.
+EXPECTED_FRAMES = SOURCE_FRAMES
 HISTORICAL_STAGE1_STOP = (
     "FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL."
 )
@@ -476,15 +486,22 @@ def _validate_motion_contract(
     motion: CanonicalG1, spec: MethodSpec, source_frames: int
 ) -> None:
     motion.validate(source_frame_count=source_frames)
-    if source_frames != EXPECTED_FRAMES or len(motion.qpos) != EXPECTED_FRAMES:
+    expected_frames = (
+        SHARED_COMPARISON_FRAMES
+        if spec.key == "protomotions-v3"
+        else SOURCE_FRAMES
+    )
+    if source_frames != SOURCE_FRAMES or len(motion.qpos) != expected_frames:
         raise ValueError(
-            f"{spec.key} must contain exactly {EXPECTED_FRAMES} frames, got "
+            f"{spec.key} must contain exactly {expected_frames} frames, got "
             f"{len(motion.qpos)}/{source_frames}"
         )
     if not np.array_equal(
-        np.asarray(motion.source_frame_idx), np.arange(EXPECTED_FRAMES)
+        np.asarray(motion.source_frame_idx), np.arange(expected_frames)
     ):
-        raise ValueError(f"{spec.key} does not cover source frames 0..599 exactly")
+        raise ValueError(
+            f"{spec.key} does not cover source frames 0..{expected_frames - 1} exactly"
+        )
     if not np.asarray(motion.valid, dtype=bool).all():
         raise ValueError(f"{spec.key} contains invalid frames")
     method = str(motion.metadata.get("method", ""))
@@ -500,6 +517,19 @@ def _validate_motion_contract(
             raise ValueError(
                 "The external reference must not be represented as verified ground truth"
             )
+    if spec.key == "protomotions-v3" and not (
+        motion.metadata.get("completion_status") == "incomplete"
+        and motion.metadata.get("full_source_completion_status") == "incomplete"
+        and motion.metadata.get("full_source_completion_ratio") == 0.75
+        and motion.metadata.get("native_contract_completion_status") == "succeeded"
+        and motion.metadata.get("native_contract_completion_ratio") == 1.0
+        and motion.metadata.get("native_contract_frame_count")
+        == SHARED_COMPARISON_FRAMES
+    ):
+        raise ValueError(
+            "ProtoMotions v3 does not distinguish official 450-frame completion "
+            "from full 600-frame source coverage"
+        )
 
 
 def _write_frame(frame: pd.DataFrame, stem: Path) -> None:
@@ -524,6 +554,7 @@ def evaluate_stage1_outputs(repo_root: str | Path) -> EvaluationBundle:
     output_dir = root / "metrics" / "stage1_publication" / "runs"
 
     rows: list[dict[str, Any]] = []
+    full_source_rows: list[dict[str, Any]] = []
     for scope, specs in (
         ("core", CORE_METHODS),
         ("diagnostic", SPARSE_DIAGNOSTICS),
@@ -533,8 +564,53 @@ def evaluate_stage1_outputs(repo_root: str | Path) -> EvaluationBundle:
             path = paths[spec.key]
             motion = CanonicalG1.load(path)
             _validate_motion_contract(motion, spec, len(human.timestamps))
-            table, summary = evaluate_motion(human, motion, robot, protocol)
+            comparison_motion = canonical_g1_source_prefix_view(
+                motion,
+                SHARED_COMPARISON_FRAMES,
+                source_frame_count=len(human.timestamps),
+            )
+            table, summary = evaluate_motion(
+                human, comparison_motion, robot, protocol
+            )
+            full_source_coverage_ratio = len(motion.qpos) / len(human.timestamps)
+            summary.update(
+                {
+                    "comparison_frame_start": 0,
+                    "comparison_frame_end_exclusive": SHARED_COMPARISON_FRAMES,
+                    "comparison_frames": SHARED_COMPARISON_FRAMES,
+                    "comparison_window_completion_ratio": 1.0,
+                    "full_source_output_frames": len(motion.qpos),
+                    "full_source_coverage_ratio": full_source_coverage_ratio,
+                    "native_contract_completion_ratio": float(
+                        motion.metadata.get(
+                            "native_contract_completion_ratio",
+                            full_source_coverage_ratio,
+                        )
+                    ),
+                    "padding_or_interpolation_used": False,
+                }
+            )
             save_evaluation(table, summary, output_dir, spec.key)
+            if len(motion.qpos) == SOURCE_FRAMES:
+                full_table, full_summary = evaluate_motion(
+                    human, motion, robot, protocol
+                )
+                save_evaluation(
+                    full_table,
+                    full_summary,
+                    output_dir,
+                    f"{spec.key}__supplemental_full600",
+                )
+                full_source_rows.append(
+                    {
+                        **full_summary,
+                        "key": spec.key,
+                        "display_name": spec.display_name,
+                        "output_path": str(path.relative_to(root)),
+                        "output_sha256": sha256_file(path),
+                        "supplemental_only": True,
+                    }
+                )
             rows.append(
                 {
                     **summary,
@@ -547,6 +623,11 @@ def evaluate_stage1_outputs(repo_root: str | Path) -> EvaluationBundle:
                     "output_sha256": sha256_file(path),
                 }
             )
+
+    _write_frame(
+        pd.DataFrame(full_source_rows),
+        root / "metrics" / "stage1_full600_supplemental_summary",
+    )
 
     frame = pd.DataFrame(rows)
     order = [
@@ -1743,14 +1824,17 @@ def _reduce_scale_per_frame(table: pd.DataFrame) -> dict[str, float]:
         if column not in table:
             raise ValueError(f"Scale per-frame table lacks {column}")
         values = table[column].to_numpy(dtype=float)
-        if len(values) != EXPECTED_FRAMES or not np.isfinite(values).all():
+        if (
+            len(values) != SHARED_COMPARISON_FRAMES
+            or not np.isfinite(values).all()
+        ):
             raise ValueError(f"Scale per-frame metric {column} is incomplete")
         result[metric] = (
             float(np.mean(values))
             if reduction == "mean"
             else float(np.percentile(values, 95))
         )
-    result["completion_ratio"] = float(len(table) / EXPECTED_FRAMES)
+    result["completion_ratio"] = float(len(table) / SOURCE_FRAMES)
     return result
 
 
@@ -2007,16 +2091,23 @@ def verify_scale_publication_input_ledger(
             raise ValueError("Scale execution contract is stale")
         motion = CanonicalG1.load(root / str(row.output_path))
         motion.validate(source_frame_count=EXPECTED_FRAMES)
+        method = str(row.method)
+        registered_frames = (
+            SHARED_COMPARISON_FRAMES
+            if method == "protomotions_v3"
+            else SOURCE_FRAMES
+        )
         if (
-            len(motion.qpos) != EXPECTED_FRAMES
-            or not np.array_equal(motion.source_frame_idx, np.arange(EXPECTED_FRAMES))
+            len(motion.qpos) != registered_frames
+            or not np.array_equal(
+                motion.source_frame_idx, np.arange(registered_frames)
+            )
             or not np.asarray(motion.valid, dtype=bool).all()
             or motion.metadata.get("canonical_source_sha256")
             != str(row.source_content_sha256)
         ):
             raise ValueError("Scale output violates the canonical motion contract")
         role = str(row.experiment_role)
-        method = str(row.method)
         target_contract = _target_contract_row(
             targets, role, method, str(row.variant)
         )
@@ -2142,7 +2233,7 @@ def verify_scale_publication_input_ledger(
             raise ValueError(f"Scale CSV/Parquet mismatch for {key}") from error
         if not np.array_equal(
             csv_table.source_frame_idx.to_numpy(dtype=np.int64),
-            np.arange(EXPECTED_FRAMES, dtype=np.int64),
+            np.arange(SHARED_COMPARISON_FRAMES, dtype=np.int64),
         ):
             raise ValueError(f"Scale raw frame indices are incomplete for {key}")
         recomputed = _reduce_scale_per_frame(csv_table)
@@ -2282,10 +2373,31 @@ def collect_scale_evidence(repo_root: str | Path) -> ScaleBundle:
     if len(robustness) != len(SCALE_VARIANTS):
         raise ValueError("Holosoma native-recomputed-contact variants are duplicated")
     selected = pd.concat([transplants, native, robustness], ignore_index=True)
-    if not (selected.frames.astype(int) == EXPECTED_FRAMES).all():
-        raise ValueError("Every scale-policy output must contain 600 frames")
-    if not np.allclose(selected.completion_ratio.astype(float), 1.0):
-        raise ValueError("Every scale-policy output must be complete")
+    if not (
+        selected.frames.astype(int) == SHARED_COMPARISON_FRAMES
+    ).all():
+        raise ValueError(
+            "Every scale-policy quality row must use the shared 450-frame prefix"
+        )
+    if not np.allclose(
+        selected.comparison_window_completion_ratio.astype(float), 1.0
+    ):
+        raise ValueError("Every scale-policy shared comparison window must be complete")
+    if not np.allclose(
+        selected.completion_ratio.astype(float),
+        SHARED_COMPARISON_FRAMES / SOURCE_FRAMES,
+    ):
+        raise ValueError(
+            "Scale evaluator completion must retain the 450/600 source scope"
+        )
+    expected_coverage = selected.method.astype(str).map(
+        lambda method: 0.75 if method == "protomotions_v3" else 1.0
+    )
+    if not np.allclose(
+        selected.full_source_coverage_ratio.astype(float),
+        expected_coverage.astype(float),
+    ):
+        raise ValueError("Scale outputs have inconsistent full-source coverage")
     numeric = selected.loc[:, [column for column in QUALITY_COLUMNS if column in selected]]
     if not np.isfinite(numeric.to_numpy(dtype=float)).all():
         raise ValueError("Scale-policy evidence contains NaN/Inf")
@@ -2394,19 +2506,30 @@ def build_reference_comparison(
 def build_direct_reference_comparison(
     repo_root: str | Path,
     paths: Mapping[str, Path] | None = None,
+    *,
+    source_frame_count: int = SOURCE_FRAMES,
+    comparison_frame_count: int = SHARED_COMPARISON_FRAMES,
 ) -> pd.DataFrame:
     """Measure direct same-G1 trajectory disagreement on the frozen Pilot."""
 
     root = Path(repo_root).resolve()
     outputs = dict(paths or method_output_paths(root))
     reference_path = outputs[REFERENCE_METHOD.key]
-    reference = CanonicalG1.load(reference_path)
+    reference = canonical_g1_source_prefix_view(
+        CanonicalG1.load(reference_path),
+        comparison_frame_count,
+        source_frame_count=source_frame_count,
+    )
     robot = CanonicalRobotModel(default_robot_scene(root))
     semantic_names = tuple(sorted(robot.body_ids)) + ("head",)
     rows: list[dict[str, Any]] = []
     for spec in CORE_METHODS:
         motion_path = outputs[spec.key]
-        motion = CanonicalG1.load(motion_path)
+        motion = canonical_g1_source_prefix_view(
+            CanonicalG1.load(motion_path),
+            comparison_frame_count,
+            source_frame_count=source_frame_count,
+        )
         if (
             motion.qpos.shape != reference.qpos.shape
             or not np.array_equal(motion.source_frame_idx, reference.source_frame_idx)
@@ -3526,7 +3649,7 @@ def render_stage1_reports(
 
 ## Executive finding
 
-The publication builder found six required operating points covering the frozen 600-frame, 19.9998-second `dance1_subject1` Pilot and evaluated them with one canonical Holosoma G1-29 model and evaluator-v3 protocol. This evidence inventory is not itself the Stage 1 acceptance decision. Evaluator v3 uses the registered shared-semantic-landmark least-squares local/body scale, separately declares root-displacement gain and root anchor, and retains head/toe span as a diagnostic only. Sparse seeds A/B remain diagnostics rather than extra methods. The Unitree-attributed corpus is an external, untimed comparison reference; its hosting provenance does **not** verify that it is official, ground truth, or a quality upper bound.
+The publication builder found six required operating points for the frozen 600-frame, 19.9998-second `dance1_subject1` source Pilot and evaluated every method on the identical source prefix `[0, 450)` with one canonical Holosoma G1-29 model and evaluator-v3 protocol. Five methods additionally retain full 600-frame evidence; ProtoMotions v3 completes its documented fixed 450-frame native contract and is explicitly only 75% complete against the longer source. No padding, interpolation, or stitching is used in the comparison. This evidence inventory is not itself the Stage 1 acceptance decision. Evaluator v3 uses the registered shared-semantic-landmark least-squares local/body scale, separately declares root-displacement gain and root anchor, and retains head/toe span as a diagnostic only. Sparse seeds A/B remain diagnostics rather than extra methods. The Unitree-attributed corpus is an external, untimed comparison reference; its hosting provenance does **not** verify that it is official, ground truth, or a quality upper bound.
 
 On this single Pilot, `{best_all.display_name}` has the lowest RF-KPE-all ({best_all.rf_kpe_all_mean_m:.4f} m), `{best_targeted.display_name}` the lowest targeted RF-KPE ({best_targeted.rf_kpe_targeted_mean_m:.4f} m), `{best_untracked.display_name}` the lowest untracked RF-KPE ({best_untracked.rf_kpe_untracked_mean_m:.4f} m), `{best_root.display_name}` the lowest common-scale root-path error ({best_root.root_translation_common_scale_mean_m:.4f} m), and `{best_yaw.display_name}` the lowest yaw error ({best_yaw.root_yaw_mean_rad:.4f} rad). These are metric-specific observations, not a universal method ranking.
 
@@ -3666,7 +3789,11 @@ The `lvhaidong/LAFAN1_Retargeting_Dataset` G1 trajectory is a **Unitree-attribut
 
 ## Claim boundary
 
-All numerical comparisons are for the preselected `dance1_subject1`, frames 0–599. Interaction results cover exactly two separate case studies. Backends, controllers, dynamics, and policy-tracking benchmarks are not silently mixed into the retargeter scatter.
+All cross-method numerical comparisons are for the preselected
+`dance1_subject1`, source frames 0–449. Full-source diagnostics for methods
+that cover frames 0–599 are reported separately. Interaction results cover
+exactly two separate case studies. Backends, controllers, dynamics, and
+policy-tracking benchmarks are not silently mixed into the retargeter scatter.
 """
 
     sparse_report = f"""# Sparse IK Analysis
@@ -3701,7 +3828,10 @@ The box and climb results demonstrate constraint effects in these two cases only
 python -c "from retargeting_comparison.stage1_publication import build_stage1_publication; build_stage1_publication('.')"
 ```
 
-4. Confirm `metrics/stage1_core_summary.csv` has six rows, `metrics/stage1_reference_summary.csv` has one untimed row, and every output covers source frames 0–599 exactly.
+4. Confirm `metrics/stage1_core_summary.csv` has six rows,
+   `metrics/stage1_reference_summary.csv` has one untimed row, every comparison
+   covers source frames 0–449 exactly, and the full-source coverage columns
+   report ProtoMotions v3 as 450/600 rather than fabricating frames 450–599.
 5. Confirm the formal fixed-contact scale matrix contains four methods × five variants, the Holosoma native-contact robustness arm contains five variants, and the controlled transplant matrix contains all five frozen formulas.
 6. Inspect `figures/stage1_publication/source_data/`; every figure has one source CSV plus SVG, PDF, and 300-dpi PNG siblings.
 7. Read `manifests/stage1_publication.json` for the PENDING evidence ledger and `manifests/stage1_validation.json` for the independently bound decision. The builder evaluates and reports existing outputs; it never launches an experiment.

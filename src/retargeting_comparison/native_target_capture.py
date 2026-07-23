@@ -253,7 +253,16 @@ def _formal_runtime_capture(
     if not output.is_file():
         raise FileNotFoundError(f"Formal runtime witness is missing for {method}: {output}")
     motion = CanonicalG1.load(output)
-    if motion.metadata.get("completion_status") != "succeeded":
+    native_complete = (
+        motion.metadata.get("completion_status") == "succeeded"
+        or (
+            method == "protomotions-v3"
+            and motion.metadata.get("native_contract_completion_status")
+            == "succeeded"
+            and motion.metadata.get("native_contract_frame_count") == 450
+        )
+    )
+    if not native_complete:
         raise RuntimeError(f"Formal runtime witness is not complete for {method}")
     capture = motion.metadata.get("runtime_pre_solver_capture")
     if not isinstance(capture, dict) or capture.get("observed_during_solver_run") is not True:
@@ -913,7 +922,7 @@ def capture_protomotions_v3(repo_root: str | Path = ".") -> dict[str, Any]:
         str(source),
         "smpl",
         1,
-        int(sequence["num_frames"]),
+        int(config.get("input", {}).get("target_raw_frames", 450)),
         30.0,
     )
     positions = np.asarray(target_keypoints, dtype=np.float64)
@@ -923,11 +932,13 @@ def capture_protomotions_v3(repo_root: str | Path = ".") -> dict[str, Any]:
     raw = np.load(source, allow_pickle=True).item()
     expected = protomotions_v3_positions(
         np.asarray(raw["positions"], dtype=np.float64)
-    )
+    )[:450]
     if not np.array_equal(positions, expected):
         raise RuntimeError("ProtoMotions v3 official loader target formula changed")
-    if int(display_frames) != int(sequence["num_frames"]):
-        raise RuntimeError("ProtoMotions v3 loader did not preserve the full Pilot")
+    if int(display_frames) != 450:
+        raise RuntimeError(
+            "ProtoMotions v3 loader did not preserve its official 450-frame contract"
+        )
     labels = np.asarray(PROTOMOTIONS_V3_LABELS)
     arrays = {
         "target_keypoints": positions,
@@ -989,6 +1000,10 @@ def capture_protomotions_v3(repo_root: str | Path = ".") -> dict[str, Any]:
             "pyroki_commit": str(config["pyroki"]["commit"]),
             "input_fps": float(input_fps),
             "subsample_factor": 1,
+            "official_target_raw_frames": 450,
+            "frozen_source_frames": int(sequence["num_frames"]),
+            "full_source_coverage_ratio": 0.75,
+            "padding_or_interpolation_used": False,
             "task_labels": labels.tolist(),
             "contact_capture": "official 5-frame cross-faded ankle/toe mean",
             "capture_environment": str(config["native_environment"]["conda_environment"]),

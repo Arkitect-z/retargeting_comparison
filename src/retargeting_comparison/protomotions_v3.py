@@ -30,7 +30,15 @@ from .schemas import CanonicalG1
 PROTOMOTIONS_V3_COMMIT = "49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c"
 PYROKI_COMMIT = "388e43e1fc0d0ee382968d3dd72970fd62a0450c"
 JAXLS_COMMIT = "cb89259f87402872485dc83706dc28234f898a82"
-TARGET_RAW_FRAMES = 600
+PILOT_SOURCE_RAW_FRAMES = 600
+# This is an upstream fixed-shape contract, not a benchmark tuning choice.
+# ProtoMotions trims or pads every motion to 15 seconds at 30 FPS so JAX can
+# compile and batch one stable trajectory shape.
+TARGET_RAW_FRAMES = 450
+OFFICIAL_RETARGETING_DOC = (
+    "https://nvlabs.github.io/ProtoMotions/tutorials/workflows/"
+    "retargeting_pyroki.html"
+)
 N_RETARGET_KEYPOINTS = 15
 N_AUX_KEYPOINTS = 3
 OFFICIAL_MAX_ITERATIONS = 800
@@ -289,7 +297,9 @@ def audit_robot_assets(repo_root: str | Path) -> dict[str, Any]:
     }
 
 
-def validate_keypoint_input(path: str | Path, expected_frames: int = TARGET_RAW_FRAMES) -> dict[str, Any]:
+def validate_keypoint_input(
+    path: str | Path, expected_frames: int = PILOT_SOURCE_RAW_FRAMES
+) -> dict[str, Any]:
     """Validate the exact native file consumed by the official v3 script."""
     with Path(path).open("rb") as stream:
         value = np.load(stream, allow_pickle=True)
@@ -595,7 +605,10 @@ def native_environment(
     env.update(
         {
             "PYTHONPATH": os.pathsep.join(paths),
-            "JAX_PLATFORMS": device,
+            # PyRoki's jax.debug.callback logging is placed on a local CPU even
+            # when the solve itself runs on CUDA.  Listing only ``cuda`` lets
+            # compilation finish but fails on the first callback.
+            "JAX_PLATFORMS": "cpu" if device == "cpu" else "cuda,cpu",
             "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
             "OMP_NUM_THREADS": "1",
             "MKL_NUM_THREADS": "1",
@@ -739,6 +752,7 @@ def convert_native_output(
     native_output: str | Path,
     *,
     source_frame_count: int,
+    native_contract_frame_count: int | None = None,
     native_joint_names: Iterable[str] = G1_JOINT_NAMES,
     timing_json: str | Path | None = None,
     metadata: dict[str, Any] | None = None,
@@ -773,7 +787,22 @@ def convert_native_output(
     order = np.asarray([names.index(name) for name in G1_JOINT_NAMES], dtype=np.int64)
     quaternion = _continuous_wxyz(quaternion)
     qpos = np.concatenate((root, quaternion, joints[:, order]), axis=1).astype(np.float64)
-    completion = "succeeded" if frames / source_frame_count >= MIN_COMPLETION_RATIO else "incomplete"
+    if native_contract_frame_count is None:
+        native_contract_frame_count = source_frame_count
+    if native_contract_frame_count < 1 or native_contract_frame_count > source_frame_count:
+        raise ValueError("Native contract frame count is outside the source trajectory")
+    full_source_completion_ratio = frames / source_frame_count
+    native_contract_completion_ratio = frames / native_contract_frame_count
+    full_source_completion = (
+        "succeeded"
+        if full_source_completion_ratio >= MIN_COMPLETION_RATIO
+        else "incomplete"
+    )
+    native_contract_completion = (
+        "succeeded"
+        if native_contract_completion_ratio >= MIN_COMPLETION_RATIO
+        else "incomplete"
+    )
     timing: dict[str, Any] = {}
     if timing_json is not None:
         timing = json.loads(Path(timing_json).read_text())
@@ -789,7 +818,22 @@ def convert_native_output(
         "implementation": "official whole-trajectory modified-PyRoki/JAXLS",
         "upstream_commit": PROTOMOTIONS_V3_COMMIT,
         "pyroki_commit": PYROKI_COMMIT,
-        "completion_status": completion,
+        # Keep the canonical completion field honest with respect to the
+        # frozen 600-frame source.  A separate field records whether the
+        # official fixed-450 contract completed.
+        "completion_status": full_source_completion,
+        "full_source_completion_status": full_source_completion,
+        "full_source_completion_ratio": full_source_completion_ratio,
+        "native_contract_completion_status": native_contract_completion,
+        "native_contract_completion_ratio": native_contract_completion_ratio,
+        "native_contract_frame_count": native_contract_frame_count,
+        "official_fixed_trajectory_policy": {
+            "operation": "trim_or_pad",
+            "duration_s": 15,
+            "fps": 30,
+            "frames": TARGET_RAW_FRAMES,
+            "documentation": OFFICIAL_RETARGETING_DOC,
+        },
         "quaternion_order": "wxyz",
         "translation_unit": "metre",
         "native_joint_order": list(names),
@@ -906,7 +950,7 @@ def write_failure_evidence(
             or (
                 "N/A — public human→G1 pipeline not integration-ready under the Pilot budget"
                 if status == "na"
-                else "Failed — official 600-frame solver did not complete; no substitute output"
+                else "Failed — official fixed-450 solver did not complete; no substitute output"
             ),
             "phase": phase,
             "reason": reason,
