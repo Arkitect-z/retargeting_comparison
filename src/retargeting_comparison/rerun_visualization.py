@@ -1476,7 +1476,12 @@ def inspect_rerun_recording(
             path, representative_mesh
         )
         representative_mesh_rows[view] = mesh_rows
-        if mesh_rows != 1 + frames * instance_count or not {
+        # InstancePoses3D is logged once per frame with one transform array
+        # containing every robot in the view.  RRD rows therefore count
+        # frames, not individual instances: one static Asset3D row plus one
+        # batched pose row per frame.  The exact batch width is fixed by
+        # ``view_instance_counts`` and the writer's active method registry.
+        if mesh_rows != 1 + frames or not {
             "Asset3D:blob",
             "InstancePoses3D:translations",
         }.issubset(
@@ -1487,8 +1492,8 @@ def inspect_rerun_recording(
             )
         ):
             raise ValueError(
-                f"Rerun {view} mesh rows do not encode exactly "
-                f"{instance_count} robot instances per frame"
+                f"Rerun {view} mesh rows do not encode one batched "
+                f"{instance_count}-robot pose per frame"
             )
     representative_closeup = next(
         entity
