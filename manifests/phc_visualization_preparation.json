@@ -1,0 +1,80 @@
+{
+  "amass_input": {
+    "path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/amass_input/lafan_bvh_fitted_smpl.npz",
+    "sha256": "be6d7b9af0bfb2948c6d6d7ca6d8812e4181f11eef72e6e75e13953fb16d5142"
+  },
+  "commands_executed_this_run": [
+    {
+      "command": [
+        "/home/weizy/anaconda3/envs/capture/bin/python",
+        "scripts/data_process/fit_smpl_shape.py",
+        "robot=unitree_g1_fitting"
+      ],
+      "cwd": "external/PHC",
+      "elapsed_s": 24.64077284600353,
+      "exit_code": 0,
+      "log_path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/fit_smpl_shape.log",
+      "log_sha256": "b46d931008661965c51443ca93ef01ccd91aad43d8f89c8c5783bdeef410d95c"
+    },
+    {
+      "command": [
+        "/home/weizy/anaconda3/envs/capture/bin/python",
+        "scripts/data_process/fit_smpl_motion.py",
+        "robot=unitree_g1_fitting",
+        "+amass_root=./artifacts/phc_visualization/dance1_subject1_f000000_000600/amass_input",
+        "+fit_all=True",
+        "+fitting_iterations=500"
+      ],
+      "cwd": "external/PHC",
+      "elapsed_s": 19.645535606017802,
+      "exit_code": 0,
+      "log_path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/fit_smpl_motion.log",
+      "log_sha256": "e11c6ddc406f131e2efa3d113b8ad5377c59c09a53ad8425e7e8d4b2f39ebd22"
+    }
+  ],
+  "dataset_native_smpl": false,
+  "phc": {
+    "actuated_dofs": 37,
+    "body_scale": 0.6542500257492065,
+    "canonical_g1_29_compatible": false,
+    "commit": "846988d433ce1f341e85ac6fbd2cd51911bb3341",
+    "config": "unitree_g1_fitting",
+    "fitting_iterations": 500,
+    "official_motion_path": "external/PHC/data/g1/v1/singles/0-lafan_bvh_fitted_smpl.pkl",
+    "official_motion_sha256": "12ea813d9e8f12a64c2eb6cdaec1224b21eff5673a06a2767fce76f655e68a77",
+    "official_shape_path": "external/PHC/data/g1/shape_optimized_v1.pkl",
+    "official_shape_sha256": "e8d01f628a599e2793e2a20364fe8961cf0b3ba1591f26ad5d5f570bd84508a9",
+    "shape_betas": [
+      2.907650947570801,
+      3.2517457008361816,
+      -6.343316555023193,
+      0.7319947481155396,
+      8.591266632080078,
+      4.393404960632324,
+      -16.638263702392578,
+      -6.056959629058838,
+      -29.382671356201172,
+      16.77116584777832
+    ],
+    "smpl_link": "external/PHC/data/smpl"
+  },
+  "prepared_motion": {
+    "frames": 600,
+    "path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/phc_official_g1_37dof.npz",
+    "sha256": "c17f15e35e8c25000f3a4107e9903fdad380bb202f4b2c6640c3c0a330e19ead"
+  },
+  "robot_visual_cache": {
+    "mesh_count": 43,
+    "path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/phc_g1_visual_transforms.npz",
+    "sha256": "70c74b35ed95b74b7a58265498fcf923002b30b78c8f72858538e55d11c322c3"
+  },
+  "schema_version": 1,
+  "sequence_id": "dance1_subject1_f000000_000600",
+  "smpl_adapter": {
+    "body_model_sha256": "8a3a7093ee10774ce7472d1a6d17fac1d09b0a3687e28dfe2a616dfaecb2c529",
+    "fit_root_aligned_mpjpe_m": 0.037855468690395355,
+    "path": "source_adapters/smpl_skin/dance1_subject1_f000000_000600/lafan_bvh_fitted_smpl.npz",
+    "sha256": "fde95df18a6323aa959100ceb444d9b11930bf51c4d6dcf7946482c7e9be1f6e"
+  },
+  "source_format": "LAFAN1 22-joint BVH"
+}

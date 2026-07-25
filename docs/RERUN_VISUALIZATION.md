@@ -1,7 +1,11 @@
 # Rerun Stage 1 visualization
 
 The Rerun viewer replays the canonical human source and every registered Stage 1
-G1 output on one source-frame-index timeline. Display time comes from the
+G1 output on one source-frame-index timeline. LAFAN1 is originally a 22-joint
+BVH dataset, not SMPL or SMPL-X. The source is therefore displayed through an
+explicit visualization-only neutral-SMPL fit (6,890 vertices, 13,776 triangles,
+37.855 mm root-aligned fit MPJPE); the canonical BVH remains the evaluator
+input. Display time comes from the
 canonical source; the nominal-30-Hz external reference is frame-index aligned,
 not claimed to have identical timestamps. Every target trajectory—including
 ProtoMotions v2.3, ProtoMotions v3, and the Unitree-attributed external
@@ -12,7 +16,14 @@ evaluator CSVs; it never invokes a retargeter.
 
 ## Build the complete recording
 
-Run from the repository root in the existing `vis` conda environment:
+Prepare the fitted source surface once in the `capture` environment:
+
+```bash
+PYTHONPATH=src conda run -n capture --no-capture-output \
+  python -m retargeting_comparison.cli prepare-smpl-skin --device cuda
+```
+
+Then run from the repository root in the existing `vis` conda environment:
 
 ```bash
 PYTHONPATH=src conda run -n vis --no-capture-output \
@@ -39,7 +50,7 @@ conda run -n vis rerun artifacts/visualization/stage1_comparison.rrd
 To stream while building, add `--spawn`. For a fast diagnostic recording, use
 `--max-frames 60`; use `--stride 2` only for visualization diagnostics, never
 as a replacement for the full shared 450-frame acceptance recording. The
-source and five other trajectories retain their 600-frame artifacts, but the
+source and the other eight target trajectories retain their 600-frame artifacts, but the
 synchronized comparison stops at frame 449 because ProtoMotions v3's official
 contract is 450 frames.
 
@@ -76,7 +87,9 @@ writing the standard acceptance manifest. The regular CLI remains fail-closed.
   penetration, exact cause-triggered artifact flags, and solve time from the
   frozen evaluator-v3 outputs.
 
-The gray/dark articulated surfaces are the official G1 visual assets and are
+The tan human surface is the fitted SMPL visualization derivative. Its source
+BVH skeleton remains available in the entity tree but starts hidden. The
+gray/dark articulated surfaces are the official G1 visual assets and are
 the default robot rendering. Colored diagnostic robot bones and joints remain
 available in the entity tree but start hidden, so a stick figure cannot obscure
 the articulated G1. Labels, root paths, and foot markers remain visible. Green feet
@@ -95,12 +108,49 @@ frozen Holosoma URDF and are regression-tested against the canonical MuJoCo
 evaluator at neutral and random qpos.
 
 The `.rrd` contains derived motion visualization and remains outside public Git,
-just like canonical trajectories and videos. Its schema-v5 manifest records the
+just like canonical trajectories and videos. Its schema-v6 manifest records the
 complete evidence bindings, exact ordered nine-trajectory set, exact logical
 instance count for every view, all 35 unique mesh hashes, 455 mesh entities,
-recording size/hash, and a decoded structural audit. Generation runs
+the fitted-SMPL cache/evidence hashes, recording size/hash, and a decoded
+structural audit. Generation runs
 `rerun rrd verify`, `rerun rrd stats`, and targeted `rerun rrd print -vv`
 checks; a large random file or a hash-only fake cannot satisfy the contract.
+
+## Current diagnostic snapshot with SMPL source
+
+The previously delivered current-completed nine-method snapshot can be rebuilt
+with the fitted human surface without misrepresenting it as acceptance
+evidence:
+
+```bash
+PYTHONPATH=src conda run -n vis --no-capture-output \
+  python -m retargeting_comparison.cli visualize-current-results
+
+conda run -n vis rerun \
+  artifacts/visualization/stage1_current_completed_9methods_smpl.rrd
+```
+
+Its manifest explicitly sets `acceptance_evidence=false`.
+
+## PHC scale-specific recording
+
+PHC has a separate recording because the public fitting asset is a 37-motor G1
+(23 body plus 14 hand/finger joints), not the canonical G1-29. It shows the
+original-size fitted human, PHC's robot-fitted shape/scale proxy human, and all
+43 meshes of the official PHC robot output:
+
+```bash
+PYTHONPATH=src conda run -n capture --no-capture-output \
+  python -m retargeting_comparison.cli prepare-phc-visualization
+
+PYTHONPATH=src conda run -n vis --no-capture-output \
+  python -m retargeting_comparison.cli visualize-phc
+
+conda run -n vis rerun artifacts/visualization/phc_scale_three_way.rrd
+```
+
+The representation and preprocessing audit is in
+[`research/LAFAN1_SMPL_SKIN_AND_PHC_VISUALIZATION.md`](../research/LAFAN1_SMPL_SKIN_AND_PHC_VISUALIZATION.md).
 
 The required order is: build publication evaluator tables, generate/verify the
 RRD in `vis`, render the PENDING browser artifact, run independent Stage 1

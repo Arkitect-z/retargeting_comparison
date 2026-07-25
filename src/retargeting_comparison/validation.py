@@ -1466,7 +1466,7 @@ def _test_evidence(root: Path) -> bool:
         and int(rerun.get("frames", 0)) == SHARED_COMPARISON_FRAMES
         and int(rerun.get("methods", 0)) == 9
         and int(rerun.get("visual_asset_count", 0)) == 35
-        and int(rerun.get("manifest_schema_version", 0)) == 5
+        and int(rerun.get("manifest_schema_version", 0)) == 6
         and rerun.get("rrd_cli_verification") == "verified"
     )
 

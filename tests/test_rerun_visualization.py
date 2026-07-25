@@ -276,6 +276,9 @@ def test_local_stage1_visualization_contract_when_artifacts_exist() -> None:
     except FileNotFoundError as error:
         _missing_artifact(f"complete local Stage 1 artifacts are not present: {error}")
     assert data.frame_count == 450
+    assert data.human_skin.vertices.shape == (450, 6890, 3)
+    assert data.human_skin.faces.shape == (13776, 3)
+    assert data.human_skin.motion.metadata["dataset_native_smpl"] is False
     assert set(data.methods) == {style.key for style in METHOD_STYLES}
     assert len(data.robot_visuals) == 35
     assert all(method.positions.shape[0] >= 450 for method in data.methods.values())
@@ -348,14 +351,14 @@ def test_large_random_file_cannot_impersonate_rerun(
 def test_stale_rerun_manifest_schema_is_rejected(tmp_path: Path) -> None:
     manifest = tmp_path / "stale.json"
     manifest.write_text(json.dumps({"schema_version": 4}), encoding="utf-8")
-    with pytest.raises(ValueError, match="schema v5"):
+    with pytest.raises(ValueError, match="schema v6"):
         validate_rerun_manifest_contract(Path.cwd(), manifest, verify_recording=False)
 
 
 def test_final_rerun_manifest_and_rrd_pass_deep_validation() -> None:
     manifest = Path("manifests/rerun_visualization.json")
-    if not manifest.is_file() or json.loads(manifest.read_text()).get("schema_version") != 5:
-        _missing_artifact("final schema-v5 Rerun manifest is not built")
+    if not manifest.is_file() or json.loads(manifest.read_text()).get("schema_version") != 6:
+        _missing_artifact("final schema-v6 Rerun manifest is not built")
     result = validate_rerun_manifest_contract(".")
     assert result["result"] == "verified"
     assert result["frame_marker_rows"] == 450
@@ -364,8 +367,8 @@ def test_final_rerun_manifest_and_rrd_pass_deep_validation() -> None:
 
 def test_tampered_final_rerun_hash_is_rejected(tmp_path: Path) -> None:
     manifest = Path("manifests/rerun_visualization.json")
-    if not manifest.is_file() or json.loads(manifest.read_text()).get("schema_version") != 5:
-        _missing_artifact("final schema-v5 Rerun manifest is not built")
+    if not manifest.is_file() or json.loads(manifest.read_text()).get("schema_version") != 6:
+        _missing_artifact("final schema-v6 Rerun manifest is not built")
     value = json.loads(manifest.read_text())
     value["output_sha256"] = "0" * 64
     tampered = tmp_path / "tampered-rerun.json"

@@ -7,6 +7,8 @@ def test_cli_exposes_stage1_commands() -> None:
     for command in (
         "audit",
         "prepare-source",
+        "prepare-smpl-skin",
+        "prepare-phc-visualization",
         "validate-models",
         "run-method",
         "evaluate",
@@ -14,6 +16,8 @@ def test_cli_exposes_stage1_commands() -> None:
         "build-report",
         "build-interactive-report",
         "visualize-results",
+        "visualize-current-results",
+        "visualize-phc",
         "run-stage1-timing",
         "validate-stage1",
     ):

@@ -43,6 +43,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="audit core native source conversions against canonical LAFAN",
     )
     adapters.add_argument("--repo-root", default=".")
+    skin = sub.add_parser(
+        "prepare-smpl-skin",
+        help="fit a visualization-only neutral SMPL skin to canonical LAFAN BVH",
+    )
+    skin.add_argument("--repo-root", default=".")
+    skin.add_argument("--sequence", default="manifests/pilot_sequence.yaml")
+    skin.add_argument("--output")
+    skin.add_argument("--evidence")
+    skin.add_argument("--iterations", type=int, default=240)
+    skin.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    phc_prepare = sub.add_parser(
+        "prepare-phc-visualization",
+        help="run the frozen public PHC SMPL-to-G1 fitting path for visualization",
+    )
+    phc_prepare.add_argument("--repo-root", default=".")
+    phc_prepare.add_argument("--sequence", default="manifests/pilot_sequence.yaml")
+    phc_prepare.add_argument("--fitting-iterations", type=int, default=500)
+    phc_prepare.add_argument("--force", action="store_true")
+    phc_visualize = sub.add_parser(
+        "visualize-phc",
+        help="build the PHC original/scaled-human/G1 Rerun recording",
+    )
+    phc_visualize.add_argument("--repo-root", default=".")
+    phc_visualize.add_argument(
+        "--output", default="artifacts/visualization/phc_scale_three_way.rrd"
+    )
+    phc_visualize.add_argument(
+        "--manifest", default="manifests/phc_rerun_visualization.json"
+    )
+    phc_visualize.add_argument("--spawn", action="store_true")
+    phc_visualize.add_argument("--max-frames", type=int)
     run_method = sub.add_parser("run-method", help="run one frozen retargeting method")
     run_method.add_argument(
         "--method",
@@ -91,6 +122,35 @@ def build_parser() -> argparse.ArgumentParser:
     visualization.add_argument("--spawn", action="store_true")
     visualization.add_argument("--max-frames", type=int)
     visualization.add_argument("--stride", type=int, default=1)
+    diagnostic_visualization = sub.add_parser(
+        "visualize-current-results",
+        help="rebuild the frozen current nine-method diagnostic with a fitted SMPL source",
+    )
+    diagnostic_visualization.add_argument("--repo-root", default=".")
+    diagnostic_visualization.add_argument(
+        "--snapshot-manifest",
+        default=(
+            "artifacts/visualization/"
+            "stage1_current_completed_9methods.manifest.json"
+        ),
+    )
+    diagnostic_visualization.add_argument(
+        "--output",
+        default=(
+            "artifacts/visualization/"
+            "stage1_current_completed_9methods_smpl.rrd"
+        ),
+    )
+    diagnostic_visualization.add_argument(
+        "--manifest",
+        default=(
+            "artifacts/visualization/"
+            "stage1_current_completed_9methods_smpl.manifest.json"
+        ),
+    )
+    diagnostic_visualization.add_argument("--spawn", action="store_true")
+    diagnostic_visualization.add_argument("--max-frames", type=int)
+    diagnostic_visualization.add_argument("--stride", type=int, default=1)
     scale = sub.add_parser(
         "run-scale-sensitivity",
         help="run the registered pre-solver scale-policy experiments",
@@ -228,6 +288,42 @@ def main(argv: list[str] | None = None) -> int:
         for row in rows:
             print(f"{row['adapter']}: {row['status']}")
         return 0
+    if args.command == "prepare-smpl-skin":
+        from .smpl_skinning import fit_lafan_to_smpl_skin
+
+        result = fit_lafan_to_smpl_skin(
+            args.repo_root,
+            sequence_manifest=args.sequence,
+            output=args.output,
+            evidence=args.evidence,
+            iterations=args.iterations,
+            device=args.device,
+        )
+        print(result["output"])
+        return 0
+    if args.command == "prepare-phc-visualization":
+        from .phc_visualization import prepare_phc_visualization
+
+        result = prepare_phc_visualization(
+            args.repo_root,
+            sequence_manifest=args.sequence,
+            fitting_iterations=args.fitting_iterations,
+            force=args.force,
+        )
+        print(result["prepared_motion"]["path"])
+        return 0
+    if args.command == "visualize-phc":
+        from .phc_visualization import write_phc_rerun_visualization
+
+        result = write_phc_rerun_visualization(
+            args.repo_root,
+            output=args.output,
+            manifest=args.manifest,
+            spawn=args.spawn,
+            max_frames=args.max_frames,
+        )
+        print(result["output"])
+        return 0
     if args.command == "evaluate":
         from .calibration import load_evaluator_protocol
         from .evaluator import evaluate_motion, save_evaluation
@@ -318,6 +414,20 @@ def main(argv: list[str] | None = None) -> int:
         result = visualize_stage1(
             repo_root=args.repo_root,
             sequence_manifest=args.sequence,
+            output=args.output,
+            manifest=args.manifest,
+            spawn=args.spawn,
+            max_frames=args.max_frames,
+            stride=args.stride,
+        )
+        print(result["output"] or "Rerun viewer spawned")
+        return 0
+    if args.command == "visualize-current-results":
+        from .rerun_visualization import visualize_current_diagnostic
+
+        result = visualize_current_diagnostic(
+            repo_root=args.repo_root,
+            snapshot_manifest=args.snapshot_manifest,
             output=args.output,
             manifest=args.manifest,
             spawn=args.spawn,

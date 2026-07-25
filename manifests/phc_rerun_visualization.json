@@ -1,0 +1,42 @@
+{
+  "dataset_native_smpl": false,
+  "fps": 30.0,
+  "frames": 600,
+  "human_rendering": "visualization_only_fitted_smpl",
+  "inputs": {
+    "prepared_motion": {
+      "path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/phc_official_g1_37dof.npz",
+      "sha256": "c17f15e35e8c25000f3a4107e9903fdad380bb202f4b2c6640c3c0a330e19ead"
+    },
+    "robot_visual_cache": {
+      "path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/phc_g1_visual_transforms.npz",
+      "sha256": "70c74b35ed95b74b7a58265498fcf923002b30b78c8f72858538e55d11c322c3"
+    },
+    "smpl_skin": {
+      "path": "source_adapters/smpl_skin/dance1_subject1_f000000_000600/lafan_bvh_fitted_smpl.npz",
+      "sha256": "fde95df18a6323aa959100ceb444d9b11930bf51c4d6dcf7946482c7e9be1f6e"
+    }
+  },
+  "output": "artifacts/visualization/phc_scale_three_way.rrd",
+  "output_sha256": "2d4bcab61b8f4705fc34480dbd32643eb28ac14f9dd50fc18b79d71a8c8948b7",
+  "output_size_bytes": 223141438,
+  "phc": {
+    "actuated_dofs": 37,
+    "body_dofs": 23,
+    "body_scale": 0.6542500257492065,
+    "canonical_g1_29_compatible": false,
+    "commit": "846988d433ce1f341e85ac6fbd2cd51911bb3341",
+    "config": "unitree_g1_fitting",
+    "hand_finger_dofs": 14,
+    "visual_meshes": 43
+  },
+  "rerun_version": "0.34.1",
+  "rrd_verify": "passed",
+  "schema_version": 1,
+  "sequence_id": "dance1_subject1_f000000_000600",
+  "source_format": "LAFAN1 22-joint BVH",
+  "views": [
+    "side_by_side",
+    "root_overlay"
+  ]
+}

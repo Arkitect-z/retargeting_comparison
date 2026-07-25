@@ -58,12 +58,18 @@ rebuild it independently with `rtcmp build-interactive-report`. Machine-readable
 figure source data, provenance, and validation results live under `metrics/`,
 `figures/`, and `manifests/`.
 
-For synchronized 3D inspection of the source and full articulated G1 visual
-meshes for all four operating points plus Sparse seeds A/B, use the Rerun
+For synchronized 3D inspection of the fitted-SMPL source surface and full
+articulated G1 visual meshes for all operating/reference trajectories plus
+Sparse seeds A/B, use the Rerun
 workflow in
 [`docs/RERUN_VISUALIZATION.md`](docs/RERUN_VISUALIZATION.md). The complete `.rrd`
 is rebuildable from ignored canonical trajectories and is therefore not
-committed. The plan-by-plan closure record is in
+committed. LAFAN1 itself remains explicitly identified as BVH rather than
+native SMPL/SMPL-X. A separate PHC narrative shows the original-size fitted
+human, PHC's robot-fitted shape/scale proxy, and the public 37-motor G1 result;
+see
+[`research/LAFAN1_SMPL_SKIN_AND_PHC_VISUALIZATION.md`](research/LAFAN1_SMPL_SKIN_AND_PHC_VISUALIZATION.md).
+The plan-by-plan closure record is in
 [`docs/STAGE1_COMPLETION_AUDIT.md`](docs/STAGE1_COMPLETION_AUDIT.md).
 The method-by-method AMASS, scale, root, time, contact, and robot-asset audit is
 [`research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md`](research/OFFICIAL_SCALE_AND_PREPROCESSING_AUDIT.md).
