@@ -1,4 +1,4 @@
-# LAFAN1 representation, fitted SMPL skin, and PHC visualization
+# LAFAN1 representation, PHC fitted targets, and corrected visualization
 
 ## Finding
 
@@ -33,14 +33,14 @@ For the frozen Pilot sequence:
 | Maximum fitted-joint error | 118.417 mm |
 | Fitted actor body scalar | 1.047674 |
 
-The fitted surface is suitable for interpreting motion and scale visually, but
-the non-zero fit error means it is not a substitute for the canonical BVH in
-the evaluator. No Stage 1 metric is recomputed from the mesh.
+The fitted surface is retained only as an audited internal adapter needed to
+provide PHC's public SMPL/AMASS input contract. Its non-zero fit error means it
+is not a substitute for the canonical BVH. It is no longer rendered in either
+Rerun recording, and no Stage 1 metric is recomputed from it.
 
-The nine-method Rerun recording now renders this SMPL surface in its grid,
-world, and root-frame views. The original BVH bones and joints remain available
-as diagnostic entities but are hidden by default. Every target remains the
-full articulated canonical G1-29 mesh.
+The nine-method Rerun recording renders the original 22-joint BVH hierarchy
+directly in its grid, world, and root-frame views. Every target remains the full
+articulated canonical G1-29 mesh.
 
 ## What the public PHC fitting utility actually does
 
@@ -109,22 +109,45 @@ result is therefore an explanatory, separate visualization and is not added to
 the main operating-point plot. Cropping or remapping it to G1-29 would create a
 new method variant and would no longer be the untouched public PHC result.
 
+Accordingly, the nine-trajectory Stage 1 recording contains no standalone PHC
+entity. Its `ProtoMotions v2.3 · Mink` trajectory comes from a PHC-lineage
+repository but uses the Mink retargeter path; lineage does not make it the PHC
+algorithm or PHC's public 37-motor output.
+
 ## PHC three-way visual narrative
 
 `rtcmp visualize-phc` shows:
 
-1. **Original-size fitted SMPL** — the LAFAN pose with the fitted actor shape
-   and scalar. The final six pose components are zeroed to mirror the exact PHC
-   input loader.
-2. **PHC robot-fitted shape + scale** — the identical pose rendered with PHC's
-   neutral robot-fitted betas and scalar. This exposes the preprocessing change
-   before robot optimization.
+1. **Original LAFAN1 BVH** — the exact 22 canonical joint positions and native
+   BVH parent hierarchy, with no fitted skin.
+2. **PHC robot-fitted targets** — the exact 24 joint positions saved in PHC's
+   official motion output after its internal neutral-shape and scalar policy.
+   These are keypoints, not a claim that LAFAN1 supplied SMPL.
 3. **PHC public G1 result** — the full 43-mesh, 37-motor robot output produced
    by the official fitting utility.
 
 The side-by-side view preserves trajectory evolution while separating the
-three bodies into lanes. The root-frame overlay removes each current root pose
-and makes body-size and pose differences directly visible.
+three representations into lanes. The root-centered overlay draws the 16
+official PHC target correspondences. Across all 600 frames, the saved target to
+robot residual is 31.771 mm mean, 31.745 mm median, 63.808 mm p95, and
+97.007 mm maximum. This confirms that the displayed G1 follows the saved fitted
+targets within the public optimizer's residual.
+
+### Corrected G1 mesh transform
+
+The first implementation incorrectly logged each raw STL with MuJoCo's compiled
+geom pose. MuJoCo first recenters/reorients raw mesh vertices and stores that
+mesh-reference correction in the geom pose. Combining the compiled pose with
+the uncompiled STL applied the correction twice, which made robot parts appear
+detached even though the official `qpos` was valid.
+
+The corrected cache embeds `model.mesh_vert` and `model.mesh_face`—MuJoCo's
+compiled geom-local geometry—and then applies `data.geom_xpos` and
+`data.geom_xmat` exactly once. Numeric assembly guards prove that frame zero
+has a `1.452 × 0.286 × 1.271 m` bounding box and that every transformed mesh
+corner remains within `0.845 m` of the free root over all 600 frames. A direct
+MuJoCo render of the same `qpos` is also retained as local visual-validation
+evidence.
 
 ## Reproduce
 
@@ -144,7 +167,8 @@ conda run -n vis rerun artifacts/visualization/phc_scale_three_way.rrd
 ```
 
 The full PHC preparation took 24.64 s for the 3,000-step shape fit and 20.26 s
-for the 600-frame, 500-step motion fit on the recorded host. The final Rerun
-recording contains all 600 frames and passed `rerun rrd verify`.
+for the 600-frame, 500-step motion fit on the recorded host. The corrected
+Rerun recording contains all 600 frames, native/keypoint human representations
+only, and passed `rerun rrd verify`.
 
 FULL-LAFAN EXPERIMENTS NOT STARTED — WAITING FOR USER APPROVAL.

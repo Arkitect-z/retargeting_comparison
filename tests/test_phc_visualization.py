@@ -61,6 +61,11 @@ def test_local_phc_preparation_and_rerun_manifests_when_present() -> None:
     assert prepared_value["phc"]["actuated_dofs"] == 37
     assert prepared_value["phc"]["canonical_g1_29_compatible"] is False
     assert recording_value["frames"] == 600
+    assert recording_value["schema_version"] == 2
+    assert recording_value["human_rendering"] == (
+        "native_bvh_and_phc_target_keypoints"
+    )
+    assert recording_value["human_skin_rendered"] is False
     assert recording_value["phc"]["visual_meshes"] == 43
     assert recording_value["phc"]["canonical_g1_29_compatible"] is False
 
@@ -73,4 +78,14 @@ def test_local_phc_preparation_and_rerun_manifests_when_present() -> None:
     )
     assert motion.qpos.shape == (600, 44)
     assert visuals.translations.shape == (600, 43, 3)
+    assert visuals.mesh_vertices.shape[1] == 3
+    assert visuals.mesh_faces.shape[1] == 3
+    assert visuals.robot_match_positions.shape == (600, 16, 3)
+    assert visuals.metadata["mesh_vertex_space"] == (
+        "mujoco_compiled_geom_local"
+    )
+    assert visuals.metadata["raw_stl_direct_rendering"] is False
+    assert visuals.metadata["max_mesh_distance_from_root_m"] < 1.0
+    assert visuals.metadata["joint_fit_residual_m"]["mean"] < 0.04
+    assert visuals.metadata["joint_fit_residual_m"]["p95"] < 0.07
     assert 0.0 < motion.body_scale < 1.0

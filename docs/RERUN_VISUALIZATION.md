@@ -2,10 +2,9 @@
 
 The Rerun viewer replays the canonical human source and every registered Stage 1
 G1 output on one source-frame-index timeline. LAFAN1 is originally a 22-joint
-BVH dataset, not SMPL or SMPL-X. The source is therefore displayed through an
-explicit visualization-only neutral-SMPL fit (6,890 vertices, 13,776 triangles,
-37.855 mm root-aligned fit MPJPE); the canonical BVH remains the evaluator
-input. Display time comes from the
+BVH dataset, not SMPL or SMPL-X. The source is therefore displayed directly as
+its native 22 joint positions and BVH bone hierarchy; no fitted human skin is
+rendered. Display time comes from the
 canonical source; the nominal-30-Hz external reference is frame-index aligned,
 not claimed to have identical timestamps. Every target trajectory—including
 ProtoMotions v2.3, ProtoMotions v3, and the Unitree-attributed external
@@ -16,14 +15,7 @@ evaluator CSVs; it never invokes a retargeter.
 
 ## Build the complete recording
 
-Prepare the fitted source surface once in the `capture` environment:
-
-```bash
-PYTHONPATH=src conda run -n capture --no-capture-output \
-  python -m retargeting_comparison.cli prepare-smpl-skin --device cuda
-```
-
-Then run from the repository root in the existing `vis` conda environment:
+Run from the repository root in the existing `vis` conda environment:
 
 ```bash
 PYTHONPATH=src conda run -n vis --no-capture-output \
@@ -87,9 +79,8 @@ writing the standard acceptance manifest. The regular CLI remains fail-closed.
   penetration, exact cause-triggered artifact flags, and solve time from the
   frozen evaluator-v3 outputs.
 
-The tan human surface is the fitted SMPL visualization derivative. Its source
-BVH skeleton remains available in the entity tree but starts hidden. The
-gray/dark articulated surfaces are the official G1 visual assets and are
+The light source hierarchy is the original BVH keypoint sequence and starts
+visible. The gray/dark articulated surfaces are the official G1 visual assets and are
 the default robot rendering. Colored diagnostic robot bones and joints remain
 available in the entity tree but start hidden, so a stick figure cannot obscure
 the articulated G1. Labels, root paths, and foot markers remain visible. Green feet
@@ -108,36 +99,40 @@ frozen Holosoma URDF and are regression-tested against the canonical MuJoCo
 evaluator at neutral and random qpos.
 
 The `.rrd` contains derived motion visualization and remains outside public Git,
-just like canonical trajectories and videos. Its schema-v6 manifest records the
+just like canonical trajectories and videos. Its schema-v7 manifest records the
 complete evidence bindings, exact ordered nine-trajectory set, exact logical
 instance count for every view, all 35 unique mesh hashes, 455 mesh entities,
-the fitted-SMPL cache/evidence hashes, recording size/hash, and a decoded
-structural audit. Generation runs
+the native source hash, recording size/hash, and a decoded structural audit.
+Generation runs
 `rerun rrd verify`, `rerun rrd stats`, and targeted `rerun rrd print -vv`
 checks; a large random file or a hash-only fake cannot satisfy the contract.
 
-## Current diagnostic snapshot with SMPL source
+## Current diagnostic snapshot with native BVH source
 
 The previously delivered current-completed nine-method snapshot can be rebuilt
-with the fitted human surface without misrepresenting it as acceptance
-evidence:
+with native BVH keypoints without misrepresenting it as acceptance evidence:
 
 ```bash
 PYTHONPATH=src conda run -n vis --no-capture-output \
   python -m retargeting_comparison.cli visualize-current-results
 
 conda run -n vis rerun \
-  artifacts/visualization/stage1_current_completed_9methods_smpl.rrd
+  artifacts/visualization/stage1_current_completed_9methods_bvh.rrd
 ```
 
 Its manifest explicitly sets `acceptance_evidence=false`.
+
+PHC is not one of those nine trajectories. `ProtoMotions v2.3 · Mink` reuses a
+PHC-lineage codebase, but it is a Mink retargeter integration and must not be
+relabeled as PHC. The standalone public PHC fitting result remains separate
+because its G1 has 37 actuated joints rather than the canonical Stage 1 G1-29.
 
 ## PHC scale-specific recording
 
 PHC has a separate recording because the public fitting asset is a 37-motor G1
 (23 body plus 14 hand/finger joints), not the canonical G1-29. It shows the
-original-size fitted human, PHC's robot-fitted shape/scale proxy human, and all
-43 meshes of the official PHC robot output:
+native 22-joint LAFAN1 BVH, the exact 24 fitted target keypoints saved by PHC,
+and all 43 meshes of the official PHC robot output:
 
 ```bash
 PYTHONPATH=src conda run -n capture --no-capture-output \
@@ -148,6 +143,13 @@ PYTHONPATH=src conda run -n vis --no-capture-output \
 
 conda run -n vis rerun artifacts/visualization/phc_scale_three_way.rrd
 ```
+
+The PHC robot is embedded from MuJoCo's compiled geom-local vertices, not raw
+STL vertices. This is essential: MuJoCo stores the STL centering/orientation
+correction in each geom pose, so applying that pose directly to the raw STL
+would apply the reference transform twice and visually disassemble the robot.
+The cache validates a maximum mesh radius below 1 m and records the 16-pair
+target-to-robot residual (31.8 mm mean, 63.8 mm p95).
 
 The representation and preprocessing audit is in
 [`research/LAFAN1_SMPL_SKIN_AND_PHC_VISUALIZATION.md`](../research/LAFAN1_SMPL_SKIN_AND_PHC_VISUALIZATION.md).

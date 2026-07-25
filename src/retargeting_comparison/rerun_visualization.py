@@ -28,11 +28,6 @@ from .constants import G1_JOINT_NAMES, STAGE1_RUN_DIRECTORIES
 from .io_utils import atomic_write_json, load_yaml, sha256_file
 from .rotations import quaternion_wxyz_to_matrix, yaw_from_matrix
 from .schemas import CanonicalG1, CanonicalHuman
-from .smpl_skinning import (
-    SmplSkinMotion,
-    default_skin_cache,
-    smpl_mesh_sequence,
-)
 
 
 SHARED_COMPARISON_FRAMES = 450
@@ -79,7 +74,7 @@ METHOD_STYLES = (
 
 SOURCE_STYLE = MethodStyle(
     "source-human",
-    "Source human · fitted SMPL skin",
+    "Source human · original LAFAN1 BVH",
     (230, 234, 241),
     True,
 )
@@ -419,17 +414,6 @@ class MethodVisualization:
 
 
 @dataclass
-class HumanSkinVisualization:
-    """Visualization-only SMPL surface fitted to the original LAFAN BVH."""
-
-    motion: SmplSkinMotion
-    vertices: np.ndarray
-    faces: np.ndarray
-    cache_path: Path
-    evidence_path: Path
-
-
-@dataclass
 class Stage1Visualization:
     repo_root: Path
     sequence: dict[str, Any]
@@ -442,7 +426,6 @@ class Stage1Visualization:
     source_path: Path
     evaluator_path: Path
     evaluator_robot_path: Path
-    human_skin: HumanSkinVisualization
     acceptance_evidence: bool
     snapshot_role: str
 
@@ -531,46 +514,6 @@ def _publication_binding_rows(
                     raise ValueError(f"Duplicate publication binding row for {key}")
                 rows[key] = (row, path)
     return rows, tuple(missing)
-
-
-def _load_human_skin(
-    root: Path,
-    human: CanonicalHuman,
-    source_path: Path,
-) -> HumanSkinVisualization:
-    skin_cache_path = default_skin_cache(root)
-    skin_evidence_path = skin_cache_path.with_name(
-        "lafan_bvh_fitted_smpl.evidence.json"
-    )
-    if not skin_cache_path.is_file() or not skin_evidence_path.is_file():
-        raise FileNotFoundError(
-            "The fitted source-human SMPL skin is missing. Run "
-            "`rtcmp prepare-smpl-skin` before building the Rerun recording."
-        )
-    skin_motion = SmplSkinMotion.load(skin_cache_path)
-    if (
-        len(skin_motion.pose_aa_zup) != len(human.timestamps)
-        or not np.isclose(skin_motion.fps, human.fps)
-    ):
-        raise ValueError("The fitted SMPL skin has a stale source timeline")
-    if skin_motion.metadata.get("canonical_source_file_sha256") != sha256_file(
-        source_path
-    ):
-        raise ValueError("The fitted SMPL skin is bound to a different source")
-    skin_vertices, skin_faces, _ = smpl_mesh_sequence(
-        skin_motion,
-        root,
-        frame_limit=min(SHARED_COMPARISON_FRAMES, len(human.timestamps)),
-        batch_size=64,
-        device="cpu",
-    )
-    return HumanSkinVisualization(
-        motion=skin_motion,
-        vertices=skin_vertices,
-        faces=skin_faces,
-        cache_path=skin_cache_path,
-        evidence_path=skin_evidence_path,
-    )
 
 
 def _build_evidence_binding(
@@ -695,8 +638,6 @@ def load_stage1_visualization(
     evaluator = load_yaml(evaluator_path)
     evaluator_robot_path = root / str(evaluator["robot_xml"])
     publication_rows, missing_publication_tables = _publication_binding_rows(root)
-    human_skin = _load_human_skin(root, human, source_path)
-
     sequence_id = sequence["sequence_id"]
     methods: dict[str, MethodVisualization] = {}
     missing_methods: dict[str, str] = {}
@@ -803,7 +744,6 @@ def load_stage1_visualization(
         source_path=source_path,
         evaluator_path=evaluator_path,
         evaluator_robot_path=evaluator_robot_path,
-        human_skin=human_skin,
         acceptance_evidence=True,
         snapshot_role="stage1_publication",
     )
@@ -835,7 +775,6 @@ def load_current_diagnostic_visualization(
         raise ValueError("The diagnostic snapshot is bound to a different sequence")
     source_path = root / str(sequence["canonical_path"])
     human = CanonicalHuman.load(source_path)
-    human_skin = _load_human_skin(root, human, source_path)
     stage = load_yaml(root / "configs" / "stage1.yaml")
     urdf_path = root / str(stage["canonical_robot"]["urdf"])
     kinematics = UrdfSemanticKinematics(urdf_path)
@@ -924,7 +863,6 @@ def load_current_diagnostic_visualization(
         source_path=source_path,
         evaluator_path=evaluator_path,
         evaluator_robot_path=evaluator_robot_path,
-        human_skin=human_skin,
         acceptance_evidence=False,
         snapshot_role="diagnostic_current_completed_methods",
     )
@@ -1029,23 +967,6 @@ def _human_display_ground_shift(data: Stage1Visualization) -> float:
     return -float(np.min(points[0, feet, 2]))
 
 
-def _world_aligned_human_skin(data: Stage1Visualization) -> np.ndarray:
-    vertices = (
-        data.human_skin.vertices
-        - data.human.root_translation[0, None, :]
-    ) * data.human_scale
-    vertices[..., 2] += _human_display_ground_shift(data)
-    return vertices
-
-
-def _root_frame_human_skin(data: Stage1Visualization) -> np.ndarray:
-    return root_frame_points(
-        data.human_skin.vertices,
-        data.human.root_translation[: len(data.human_skin.vertices)],
-        human_heading_yaw(data.human)[: len(data.human_skin.vertices)],
-    ) * data.human_scale
-
-
 def _human_edges(human: CanonicalHuman) -> tuple[tuple[int, int], ...]:
     return tuple((int(parent), child) for child, parent in enumerate(human.parent_indices) if parent >= 0)
 
@@ -1066,13 +987,11 @@ def _active_view_method_keys(
 
 def _recording_id(data: Stage1Visualization) -> str:
     digest = hashlib.sha256(
-        b"articulated_g1_visual_meshes_v6_fitted_smpl_skin"
+        b"articulated_g1_visual_meshes_v7_native_bvh_keypoints"
     )
     digest.update(data.human.source_sha256.encode())
     digest.update(data.snapshot_role.encode())
     digest.update(str(data.acceptance_evidence).encode())
-    digest.update(bytes.fromhex(sha256_file(data.human_skin.cache_path)))
-    digest.update(bytes.fromhex(sha256_file(data.human_skin.evidence_path)))
     digest.update(bytes.fromhex(sha256_file(data.urdf_path)))
     digest.update(
         bytes.fromhex(sha256_file(data.repo_root / "manifests" / "evaluator.yaml"))
@@ -1103,20 +1022,6 @@ def _hidden_robot_debug_overrides(
     }
 
 
-def _spatial_overrides(
-    rrb: Any, root: str, method_keys: tuple[str, ...]
-) -> dict[str, Any]:
-    overrides = _hidden_robot_debug_overrides(rrb, root, method_keys)
-    if root in {"grid", "world", "root_frame"}:
-        overrides.update(
-            {
-                f"/{root}/source-human/bones": rrb.EntityBehavior(visible=False),
-                f"/{root}/source-human/joints": rrb.EntityBehavior(visible=False),
-            }
-        )
-    return overrides
-
-
 def _blueprint(rrb: Any, fps: float) -> Any:
     main_spatial = rrb.Tabs(
         rrb.Spatial3DView(
@@ -1128,7 +1033,7 @@ def _blueprint(rrb: Any, fps: float) -> Any:
                 look_target=(0.0, 0.0, 1.0),
                 eye_up=(0.0, 0.0, 1.0),
             ),
-            overrides=_spatial_overrides(
+            overrides=_hidden_robot_debug_overrides(
                 rrb, "grid", VIEW_METHOD_KEYS["grid"]
             ),
         ),
@@ -1141,7 +1046,7 @@ def _blueprint(rrb: Any, fps: float) -> Any:
                 look_target=(0.0, 0.0, 0.9),
                 eye_up=(0.0, 0.0, 1.0),
             ),
-            overrides=_spatial_overrides(
+            overrides=_hidden_robot_debug_overrides(
                 rrb, "world", VIEW_METHOD_KEYS["world"]
             ),
         ),
@@ -1154,7 +1059,7 @@ def _blueprint(rrb: Any, fps: float) -> Any:
                 look_target=(0.0, 0.0, 0.8),
                 eye_up=(0.0, 0.0, 1.0),
             ),
-            overrides=_spatial_overrides(
+            overrides=_hidden_robot_debug_overrides(
                 rrb, "root_frame", VIEW_METHOD_KEYS["root_frame"]
             ),
         ),
@@ -1167,7 +1072,7 @@ def _blueprint(rrb: Any, fps: float) -> Any:
                 look_target=(0.0, 0.0, 0.8),
                 eye_up=(0.0, 0.0, 1.0),
             ),
-            overrides=_spatial_overrides(
+            overrides=_hidden_robot_debug_overrides(
                 rrb, "seeds", VIEW_METHOD_KEYS["seeds"]
             ),
         ),
@@ -1323,35 +1228,6 @@ def _closeup_mesh_entity(key: str, index: int, visual: UrdfVisual) -> str:
     return f"closeups/{key}/g1_visual_meshes/{index:02d}_{visual.link_name}"
 
 
-def _human_skin_entity(view: str) -> str:
-    return f"{view}/source-human/skin"
-
-
-def _log_human_skin_topology(rr: Any, data: Stage1Visualization) -> None:
-    """Log immutable SMPL topology once; frame rows update only vertices."""
-
-    for view in ("grid", "world", "root_frame"):
-        rr.log(
-            _human_skin_entity(view),
-            rr.Mesh3D.from_fields(
-                triangle_indices=data.human_skin.faces,
-                albedo_factor=(205, 177, 151, 255),
-            ),
-            static=True,
-        )
-
-
-def _log_human_skin_frame(
-    rr: Any,
-    view: str,
-    vertices: np.ndarray,
-) -> None:
-    rr.log(
-        _human_skin_entity(view),
-        rr.Mesh3D.from_fields(vertex_positions=vertices),
-    )
-
-
 def _log_g1_mesh_assets(rr: Any, data: Stage1Visualization) -> None:
     """Embed one copy of each G1 visual mesh per comparison coordinate space."""
 
@@ -1477,10 +1353,7 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
             f"- FPS: {data.human.fps:.6f}",
             f"- Human display scale: {data.human_scale:.6f}",
             "- LAFAN1 source format: 22-joint BVH (not native SMPL/SMPL-X)",
-            (
-                "- Human surface: visualization-only neutral SMPL fit; "
-                f"root-aligned MPJPE {float(data.human_skin.motion.metadata['root_aligned_mpjpe_m']) * 1000.0:.1f} mm"
-            ),
+            "- Human rendering: native BVH joints and bone hierarchy; no fitted skin",
             f"- Loaded G1 trajectories: {len(data.methods)}",
             "- External reference: Unitree-attributed corpus (not verified ground truth)",
             "- Green feet: frozen source stance without skating",
@@ -1490,7 +1363,7 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
             "- Root-frame view removes each motion's root translation and yaw",
             "- Nine close-ups show one articulated G1 trajectory per panel",
             "- Robot bones/joints are quantitative helpers hidden by default",
-            "- Source BVH bones/joints remain available but are hidden by default",
+            "- Source BVH bones/joints are visible by default",
             "",
             "The visualization replays measured canonical outputs; it does not rerun a retargeter.",
         ]
@@ -1538,7 +1411,6 @@ def _log_static_scene(rr: Any, data: Stage1Visualization) -> None:
             ),
             static=True,
         )
-    _log_human_skin_topology(rr, data)
     _log_g1_mesh_assets(rr, data)
 
 
@@ -1699,9 +1571,12 @@ def inspect_rerun_recording(
     # coordinate-space prefix rather than duplicating that asset list here.
     required_entities = {
         "/metadata/frame_marker",
-        "/grid/source-human/skin",
-        "/world/source-human/skin",
-        "/root_frame/source-human/skin",
+        "/grid/source-human/bones",
+        "/grid/source-human/joints",
+        "/world/source-human/bones",
+        "/world/source-human/joints",
+        "/root_frame/source-human/bones",
+        "/root_frame/source-human/joints",
     }
     for view in VIEW_METHOD_KEYS:
         count = sum(
@@ -1736,8 +1611,6 @@ def inspect_rerun_recording(
         "InstancePoses3D:mat3x3",
         "InstancePoses3D:scales",
         "LineStrips3D:strips",
-        "Mesh3D:triangle_indices",
-        "Mesh3D:vertex_positions",
         "Points3D:positions",
         "Scalars:scalars",
     }
@@ -1754,19 +1627,28 @@ def inspect_rerun_recording(
         raise ValueError(
             f"Rerun frame marker has {marker_rows} rows, expected {frames}"
         )
-    human_skin_rows: dict[str, int] = {}
+    human_keypoint_rows: dict[str, dict[str, int]] = {}
     for view in ("grid", "world", "root_frame"):
-        entity = f"/{view}/source-human/skin"
-        rows, dump = _rrd_entity_rows_and_components(path, entity)
-        if rows != frames + 1 or not {
-            "Mesh3D:triangle_indices",
-            "Mesh3D:vertex_positions",
-        }.issubset(set(re.findall(r"Mesh3D:[a-z0-9_]+", dump))):
+        bones_rows, bones_dump = _rrd_entity_rows_and_components(
+            path, f"/{view}/source-human/bones"
+        )
+        joints_rows, joints_dump = _rrd_entity_rows_and_components(
+            path, f"/{view}/source-human/joints"
+        )
+        if (
+            bones_rows != frames
+            or joints_rows != frames
+            or "LineStrips3D:strips" not in bones_dump
+            or "Points3D:positions" not in joints_dump
+        ):
             raise ValueError(
-                f"Rerun {view} source-human skin does not contain static "
-                "SMPL topology plus one vertex row per frame"
+                f"Rerun {view} source human is not the full native BVH "
+                "bone/joint sequence"
             )
-        human_skin_rows[view] = rows
+        human_keypoint_rows[view] = {
+            "bones": bones_rows,
+            "joints": joints_rows,
+        }
     view_instance_counts = {
         view: sum(key in methods for key in keys)
         for view, keys in VIEW_METHOD_KEYS.items()
@@ -1831,7 +1713,7 @@ def inspect_rerun_recording(
         "num_static": parsed["scalars"].get("num_static"),
         "frame_marker_rows": marker_rows,
         "representative_mesh_rows": representative_mesh_rows,
-        "source_human_skin_rows": human_skin_rows,
+        "source_human_keypoint_rows": human_keypoint_rows,
         "representative_metric_rows": metric_rows,
         "verified_view_instance_counts": {
             **view_instance_counts,
@@ -1858,8 +1740,8 @@ def validate_rerun_manifest_contract(
     if not manifest_path.is_absolute():
         manifest_path = root / manifest_path
     value = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or int(value.get("schema_version", 0)) != 6:
-        raise ValueError("Rerun manifest schema v6 is required")
+    if not isinstance(value, dict) or int(value.get("schema_version", 0)) != 7:
+        raise ValueError("Rerun manifest schema v7 is required")
     if value.get("methods") != list(EXPECTED_TRAJECTORY_KEYS):
         raise ValueError("Rerun manifest does not contain the exact ordered trajectory set")
     expected_roles = {
@@ -1882,25 +1764,19 @@ def validate_rerun_manifest_contract(
         raise ValueError("Rerun default rendering is not the G1 mesh")
     if value.get("robot_debug_bones_and_joints_default_visible") is not False:
         raise ValueError("Rerun robot helper skeletons must be hidden by default")
-    if value.get("source_human_rendering") != (
-        "visualization_only_fitted_smpl_skin"
-    ):
-        raise ValueError("Rerun source human is not rendered as fitted SMPL")
-    if value.get("source_human_debug_bones_and_joints_default_visible") is not False:
-        raise ValueError("Rerun source helper skeleton must be hidden by default")
+    if value.get("source_human_rendering") != "native_lafan_bvh_keypoints":
+        raise ValueError("Rerun source human is not the native BVH hierarchy")
+    if value.get("source_human_bones_and_joints_default_visible") is not True:
+        raise ValueError("Rerun source BVH hierarchy must be visible by default")
+    if value.get("source_human_skin_rendered") is not False:
+        raise ValueError("Rerun must not render a fitted human skin")
     if (
         value.get("canonical_source", {}).get("representation") != "LAFAN1_BVH"
         or value.get("canonical_source", {}).get("dataset_native_smpl") is not False
     ):
         raise ValueError("Rerun manifest misstates the original LAFAN representation")
-    source_skin = value.get("source_human_skin", {})
-    if (
-        source_skin.get("dataset_native_smpl") is not False
-        or int(source_skin.get("vertices", -1)) != 6890
-        or int(source_skin.get("triangles", -1)) != 13776
-        or not 0.0 < float(source_skin.get("root_aligned_mpjpe_m", -1.0)) < 0.2
-    ):
-        raise ValueError("Rerun fitted-SMPL skin evidence is incomplete")
+    if "source_human_skin" in value:
+        raise ValueError("Rerun manifest still contains fitted-skin evidence")
 
     expected_view_keys = {
         **{view: list(keys) for view, keys in VIEW_METHOD_KEYS.items()},
@@ -1935,10 +1811,6 @@ def validate_rerun_manifest_contract(
     checked_path(
         value.get("canonical_source", {}).get("path"),
         value.get("canonical_source", {}).get("sha256"),
-    )
-    checked_path(source_skin.get("cache_path"), source_skin.get("cache_sha256"))
-    checked_path(
-        source_skin.get("evidence_path"), source_skin.get("evidence_sha256")
     )
     checked_path(value.get("canonical_urdf"), value.get("canonical_urdf_sha256"))
     checked_path(
@@ -2023,7 +1895,7 @@ def validate_rerun_manifest_contract(
     for key in (
         "frame_marker_rows",
         "representative_mesh_rows",
-        "source_human_skin_rows",
+        "source_human_keypoint_rows",
         "representative_metric_rows",
         "verified_view_instance_counts",
         "exact_grid_trajectory_set",
@@ -2079,14 +1951,12 @@ def write_rerun_recording(
 
     human_edges = _human_edges(data.human)
     world_human = _world_aligned_human(data)
-    world_human_skin = _world_aligned_human_skin(data)
     human_yaw = human_heading_yaw(data.human)
     root_human = root_frame_points(
         data.human.world_positions,
         data.human.root_translation,
         human_yaw,
     ) * data.human_scale
-    root_human_skin = _root_frame_human_skin(data)
     world_methods = {key: _world_aligned_robot(method) for key, method in data.methods.items()}
     root_methods = {
         key: root_frame_points(
@@ -2151,22 +2021,6 @@ def write_rerun_recording(
             source_feet,
             source_foot_colors,
         )
-        _log_human_skin_frame(
-            rr,
-            "grid",
-            world_human_skin[frame] + np.asarray(LANE_OFFSETS["source-human"]),
-        )
-        _log_human_skin_frame(
-            rr,
-            "world",
-            world_human_skin[frame],
-        )
-        _log_human_skin_frame(
-            rr,
-            "root_frame",
-            root_human_skin[frame],
-        )
-
         for style in _active_styles(data):
             method = data.methods[style.key]
             label = _frame_label(style, method, frame)
@@ -2286,7 +2140,7 @@ def write_rerun_recording(
         key for key in CLOSEUP_METHOD_KEYS if key in data.methods
     )
     result: dict[str, Any] = {
-        "schema_version": 6,
+        "schema_version": 7,
         "sequence_id": data.sequence["sequence_id"],
         "source_sha256": data.human.source_sha256,
         "canonical_source": {
@@ -2295,27 +2149,9 @@ def write_rerun_recording(
             "representation": "LAFAN1_BVH",
             "dataset_native_smpl": False,
         },
-        "source_human_rendering": "visualization_only_fitted_smpl_skin",
-        "source_human_debug_bones_and_joints_default_visible": False,
-        "source_human_skin": {
-            "cache_path": data.human_skin.cache_path.relative_to(
-                data.repo_root
-            ).as_posix(),
-            "cache_sha256": sha256_file(data.human_skin.cache_path),
-            "evidence_path": data.human_skin.evidence_path.relative_to(
-                data.repo_root
-            ).as_posix(),
-            "evidence_sha256": sha256_file(data.human_skin.evidence_path),
-            "body_model_sha256": data.human_skin.motion.metadata[
-                "body_model_sha256"
-            ],
-            "vertices": int(data.human_skin.vertices.shape[1]),
-            "triangles": int(len(data.human_skin.faces)),
-            "root_aligned_mpjpe_m": float(
-                data.human_skin.motion.metadata["root_aligned_mpjpe_m"]
-            ),
-            "dataset_native_smpl": False,
-        },
+        "source_human_rendering": "native_lafan_bvh_keypoints",
+        "source_human_bones_and_joints_default_visible": True,
+        "source_human_skin_rendered": False,
         "evaluator_protocol_sha256": sha256_file(
             data.evaluator_path
         ),
@@ -2467,18 +2303,18 @@ def visualize_current_diagnostic(
     ),
     output: str | Path = (
         "artifacts/visualization/"
-        "stage1_current_completed_9methods_smpl.rrd"
+        "stage1_current_completed_9methods_bvh.rrd"
     ),
     manifest: str | Path = (
         "artifacts/visualization/"
-        "stage1_current_completed_9methods_smpl.manifest.json"
+        "stage1_current_completed_9methods_bvh.manifest.json"
     ),
     *,
     spawn: bool = False,
     max_frames: int | None = None,
     stride: int = 1,
 ) -> dict[str, Any]:
-    """Rebuild the prior nine-method diagnostic with a fitted SMPL source skin."""
+    """Rebuild the prior nine-method diagnostic with the native BVH source."""
 
     data = load_current_diagnostic_visualization(repo_root, snapshot_manifest)
     root = Path(repo_root).resolve()

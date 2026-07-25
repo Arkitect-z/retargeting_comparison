@@ -16,19 +16,19 @@ import tempfile
 import time
 import uuid
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from .io_utils import atomic_write_json, load_yaml, sha256_file
+from .schemas import CanonicalHuman
 from .smpl_skinning import (
     SmplSkinMotion,
     default_skin_cache,
     default_smpl_model_file,
     default_smpl_model_root,
-    smpl_mesh_sequence,
 )
 
 
@@ -38,6 +38,36 @@ PHC_ACTUATED_DOFS = 37
 PHC_BODY_DOFS = 23
 PHC_HAND_DOFS = 14
 PHC_VISUAL_MESHES = 43
+PHC_SMPL_JOINT_NAMES = (
+    "Pelvis",
+    "L_Hip",
+    "R_Hip",
+    "Torso",
+    "L_Knee",
+    "R_Knee",
+    "Spine",
+    "L_Ankle",
+    "R_Ankle",
+    "Chest",
+    "L_Toe",
+    "R_Toe",
+    "Neck",
+    "L_Thorax",
+    "R_Thorax",
+    "Head",
+    "L_Shoulder",
+    "R_Shoulder",
+    "L_Elbow",
+    "R_Elbow",
+    "L_Wrist",
+    "R_Wrist",
+    "L_Hand",
+    "R_Hand",
+)
+PHC_SMPL_PARENT_INDICES = np.asarray(
+    (-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19, 20, 21),
+    dtype=np.int64,
+)
 
 
 def _artifact_directory(root: Path, sequence_id: str) -> Path:
@@ -213,9 +243,16 @@ class PhcPreparedMotion:
 class PhcRobotVisualCache:
     translations: np.ndarray
     rotations: np.ndarray
-    scales: np.ndarray
     colors: np.ndarray
-    mesh_paths: tuple[str, ...]
+    mesh_names: tuple[str, ...]
+    mesh_vertices: np.ndarray
+    mesh_vertex_offsets: np.ndarray
+    mesh_faces: np.ndarray
+    mesh_face_offsets: np.ndarray
+    robot_match_positions: np.ndarray
+    match_robot_names: tuple[str, ...]
+    match_target_names: tuple[str, ...]
+    match_target_indices: np.ndarray
     metadata: dict[str, Any]
 
     def validate(self) -> None:
@@ -224,20 +261,61 @@ class PhcRobotVisualCache:
             raise ValueError("PHC visual translations have the wrong shape")
         if self.rotations.shape != (frames, visuals, 3, 3):
             raise ValueError("PHC visual rotations have the wrong shape")
-        if self.scales.shape != (visuals, 3):
-            raise ValueError("PHC visual scales have the wrong shape")
-        if self.colors.shape != (visuals, 4) or len(self.mesh_paths) != visuals:
+        if self.colors.shape != (visuals, 4) or len(self.mesh_names) != visuals:
             raise ValueError("PHC visual asset inventory is inconsistent")
         if visuals != PHC_VISUAL_MESHES:
             raise ValueError(f"PHC public G1 should expose {PHC_VISUAL_MESHES} visual meshes")
+        if (
+            self.mesh_vertices.ndim != 2
+            or self.mesh_vertices.shape[1] != 3
+            or self.mesh_faces.ndim != 2
+            or self.mesh_faces.shape[1] != 3
+            or self.mesh_vertex_offsets.shape != (visuals + 1,)
+            or self.mesh_face_offsets.shape != (visuals + 1,)
+            or self.mesh_vertex_offsets[0] != 0
+            or self.mesh_face_offsets[0] != 0
+            or self.mesh_vertex_offsets[-1] != len(self.mesh_vertices)
+            or self.mesh_face_offsets[-1] != len(self.mesh_faces)
+            or np.any(np.diff(self.mesh_vertex_offsets) <= 0)
+            or np.any(np.diff(self.mesh_face_offsets) <= 0)
+        ):
+            raise ValueError("PHC compiled mesh buffers are inconsistent")
+        for visual in range(visuals):
+            face_start, face_stop = self.mesh_face_offsets[visual : visual + 2]
+            vertex_count = int(
+                self.mesh_vertex_offsets[visual + 1]
+                - self.mesh_vertex_offsets[visual]
+            )
+            faces = self.mesh_faces[face_start:face_stop]
+            if np.min(faces) < 0 or np.max(faces) >= vertex_count:
+                raise ValueError("PHC compiled mesh has out-of-range triangle indices")
+        matches = len(self.match_robot_names)
+        if (
+            self.robot_match_positions.shape != (frames, matches, 3)
+            or len(self.match_target_names) != matches
+            or self.match_target_indices.shape != (matches,)
+            or np.min(self.match_target_indices) < 0
+            or np.max(self.match_target_indices) >= len(PHC_SMPL_JOINT_NAMES)
+        ):
+            raise ValueError("PHC target-correspondence inventory is inconsistent")
         if not all(
             np.isfinite(value).all()
-            for value in (self.translations, self.rotations, self.scales, self.colors)
+            for value in (
+                self.translations,
+                self.rotations,
+                self.colors,
+                self.mesh_vertices,
+                self.robot_match_positions,
+            )
         ):
             raise ValueError("PHC visual cache contains non-finite values")
         determinant = np.linalg.det(self.rotations.reshape(-1, 3, 3))
         if not np.allclose(determinant, 1.0, atol=1e-5):
             raise ValueError("PHC visual transforms contain invalid rotations")
+        if self.metadata.get("mesh_vertex_space") != "mujoco_compiled_geom_local":
+            raise ValueError("PHC visual cache must use MuJoCo-compiled mesh vertices")
+        if float(self.metadata.get("max_mesh_distance_from_root_m", np.inf)) >= 2.0:
+            raise ValueError("PHC G1 compiled meshes fail the assembly-radius check")
 
     def save(self, path: Path) -> None:
         self.validate()
@@ -245,9 +323,16 @@ class PhcRobotVisualCache:
             path,
             translations=self.translations,
             rotations=self.rotations,
-            scales=self.scales,
             colors=self.colors,
-            mesh_paths=np.asarray(self.mesh_paths),
+            mesh_names=np.asarray(self.mesh_names),
+            mesh_vertices=self.mesh_vertices,
+            mesh_vertex_offsets=self.mesh_vertex_offsets,
+            mesh_faces=self.mesh_faces,
+            mesh_face_offsets=self.mesh_face_offsets,
+            robot_match_positions=self.robot_match_positions,
+            match_robot_names=np.asarray(self.match_robot_names),
+            match_target_names=np.asarray(self.match_target_names),
+            match_target_indices=self.match_target_indices,
             metadata_json=np.asarray(
                 json.dumps(self.metadata, sort_keys=True, separators=(",", ":"))
             ),
@@ -259,9 +344,28 @@ class PhcRobotVisualCache:
             cache = cls(
                 translations=np.asarray(archive["translations"], dtype=np.float64),
                 rotations=np.asarray(archive["rotations"], dtype=np.float64),
-                scales=np.asarray(archive["scales"], dtype=np.float64),
                 colors=np.asarray(archive["colors"], dtype=np.float64),
-                mesh_paths=tuple(np.asarray(archive["mesh_paths"]).astype(str)),
+                mesh_names=tuple(np.asarray(archive["mesh_names"]).astype(str)),
+                mesh_vertices=np.asarray(archive["mesh_vertices"], dtype=np.float64),
+                mesh_vertex_offsets=np.asarray(
+                    archive["mesh_vertex_offsets"], dtype=np.int64
+                ),
+                mesh_faces=np.asarray(archive["mesh_faces"], dtype=np.int64),
+                mesh_face_offsets=np.asarray(
+                    archive["mesh_face_offsets"], dtype=np.int64
+                ),
+                robot_match_positions=np.asarray(
+                    archive["robot_match_positions"], dtype=np.float64
+                ),
+                match_robot_names=tuple(
+                    np.asarray(archive["match_robot_names"]).astype(str)
+                ),
+                match_target_names=tuple(
+                    np.asarray(archive["match_target_names"]).astype(str)
+                ),
+                match_target_indices=np.asarray(
+                    archive["match_target_indices"], dtype=np.int64
+                ),
                 metadata=json.loads(str(np.asarray(archive["metadata_json"]).item())),
             )
         cache.validate()
@@ -313,7 +417,11 @@ def _prepare_robot_visual_cache(
     }
     mesh_directory = robot_xml.parent / "meshes"
     mesh_paths: list[str] = []
-    scales = np.empty((len(visual_geom_ids), 3), dtype=np.float64)
+    mesh_names: list[str] = []
+    compiled_vertices: list[np.ndarray] = []
+    compiled_faces: list[np.ndarray] = []
+    vertex_offsets = [0]
+    face_offsets = [0]
     colors = np.empty((len(visual_geom_ids), 4), dtype=np.float64)
     for position, geom_id in enumerate(visual_geom_ids):
         mesh_id = int(model.geom_dataid[geom_id])
@@ -322,8 +430,24 @@ def _prepare_robot_visual_cache(
         if not path.is_file():
             raise FileNotFoundError(f"PHC robot mesh is missing: {path}")
         mesh_paths.append(str(path))
-        scales[position] = model.mesh_scale[mesh_id]
+        mesh_names.append(str(mesh_name))
         colors[position] = model.geom_rgba[geom_id]
+        vertex_start = int(model.mesh_vertadr[mesh_id])
+        vertex_count = int(model.mesh_vertnum[mesh_id])
+        face_start = int(model.mesh_faceadr[mesh_id])
+        face_count = int(model.mesh_facenum[mesh_id])
+        vertices = np.asarray(
+            model.mesh_vert[vertex_start : vertex_start + vertex_count],
+            dtype=np.float64,
+        ).copy()
+        faces = np.asarray(
+            model.mesh_face[face_start : face_start + face_count],
+            dtype=np.int64,
+        ).copy()
+        compiled_vertices.append(vertices)
+        compiled_faces.append(faces)
+        vertex_offsets.append(vertex_offsets[-1] + len(vertices))
+        face_offsets.append(face_offsets[-1] + len(faces))
 
     translations = np.empty(
         (len(motion.qpos), len(visual_geom_ids), 3), dtype=np.float64
@@ -331,14 +455,98 @@ def _prepare_robot_visual_cache(
     rotations = np.empty(
         (len(motion.qpos), len(visual_geom_ids), 3, 3), dtype=np.float64
     )
+    joint_matches = tuple(
+        (str(robot_name), str(target_name))
+        for robot_name, target_name in fitting_config["joint_matches"]
+    )
+    extended = {
+        str(item["joint_name"]): item
+        for item in fitting_config["extend_config"]
+    }
+    target_indices = np.asarray(
+        [PHC_SMPL_JOINT_NAMES.index(target_name) for _, target_name in joint_matches],
+        dtype=np.int64,
+    )
+    robot_match_positions = np.empty(
+        (len(motion.qpos), len(joint_matches), 3), dtype=np.float64
+    )
+    max_mesh_distance_from_root = 0.0
+    frame_zero_bounds: tuple[np.ndarray, np.ndarray] | None = None
     for frame, qpos in enumerate(motion.qpos):
         data.qpos[:] = qpos
         mujoco.mj_forward(model, data)
         translations[frame] = data.geom_xpos[list(visual_geom_ids)]
         rotations[frame] = data.geom_xmat[list(visual_geom_ids)].reshape(-1, 3, 3)
+        for match_index, (robot_name, _) in enumerate(joint_matches):
+            body_id = mujoco.mj_name2id(
+                model, mujoco.mjtObj.mjOBJ_BODY, robot_name
+            )
+            if body_id >= 0:
+                robot_match_positions[frame, match_index] = data.xpos[body_id]
+                continue
+            if robot_name not in extended:
+                raise ValueError(f"PHC fitted robot joint is missing: {robot_name}")
+            item = extended[robot_name]
+            parent_id = mujoco.mj_name2id(
+                model, mujoco.mjtObj.mjOBJ_BODY, str(item["parent_name"])
+            )
+            parent_rotation = data.xmat[parent_id].reshape(3, 3)
+            robot_match_positions[frame, match_index] = (
+                data.xpos[parent_id]
+                + parent_rotation @ np.asarray(item["pos"], dtype=np.float64)
+            )
+
+        # Eight transformed local AABB corners per visual are enough to catch
+        # a duplicated mesh-reference transform without materializing every
+        # vertex at every frame.
+        frame_bounds_min = np.full(3, np.inf, dtype=np.float64)
+        frame_bounds_max = np.full(3, -np.inf, dtype=np.float64)
+        for visual, vertices in enumerate(compiled_vertices):
+            local_min = vertices.min(axis=0)
+            local_max = vertices.max(axis=0)
+            corners = np.asarray(
+                [
+                    (x, y, z)
+                    for x in (local_min[0], local_max[0])
+                    for y in (local_min[1], local_max[1])
+                    for z in (local_min[2], local_max[2])
+                ],
+                dtype=np.float64,
+            )
+            world_corners = (
+                corners @ rotations[frame, visual].T
+                + translations[frame, visual]
+            )
+            frame_bounds_min = np.minimum(frame_bounds_min, world_corners.min(axis=0))
+            frame_bounds_max = np.maximum(frame_bounds_max, world_corners.max(axis=0))
+            max_mesh_distance_from_root = max(
+                max_mesh_distance_from_root,
+                float(np.max(np.linalg.norm(world_corners - qpos[:3], axis=1))),
+            )
+        if frame == 0:
+            frame_zero_bounds = (frame_bounds_min, frame_bounds_max)
+
+    target_positions = motion.smpl_joints[:, target_indices]
+    correspondence_error = np.linalg.norm(
+        robot_match_positions - target_positions, axis=-1
+    )
+    if (
+        float(np.mean(correspondence_error)) >= 0.08
+        or float(np.quantile(correspondence_error, 0.95)) >= 0.15
+        or float(np.max(correspondence_error)) >= 0.25
+    ):
+        raise ValueError("PHC qpos does not follow the saved fitted target keypoints")
+    assert frame_zero_bounds is not None
+    frame_zero_extent = frame_zero_bounds[1] - frame_zero_bounds[0]
+    if (
+        np.any(frame_zero_extent < np.asarray((0.2, 0.15, 0.8)))
+        or np.any(frame_zero_extent > np.asarray((2.0, 2.0, 2.0)))
+        or max_mesh_distance_from_root >= 2.0
+    ):
+        raise ValueError("PHC compiled visual meshes fail the G1 assembly check")
 
     metadata = {
-        "schema_version": 1,
+        "schema_version": 2,
         "robot_xml": str(robot_xml),
         "robot_xml_sha256": sha256_file(robot_xml),
         "nq": model.nq,
@@ -347,6 +555,23 @@ def _prepare_robot_visual_cache(
         "dof_link_names": list(dof_link_names),
         "qpos_joint_names": list(xml_joint_names),
         "visual_mesh_count": len(visual_geom_ids),
+        "mesh_vertex_space": "mujoco_compiled_geom_local",
+        "raw_stl_direct_rendering": False,
+        "compiled_vertex_count": int(sum(map(len, compiled_vertices))),
+        "compiled_triangle_count": int(sum(map(len, compiled_faces))),
+        "frame_zero_assembled_bounds_m": {
+            "min": frame_zero_bounds[0].tolist(),
+            "max": frame_zero_bounds[1].tolist(),
+            "extent": frame_zero_extent.tolist(),
+        },
+        "max_mesh_distance_from_root_m": max_mesh_distance_from_root,
+        "joint_fit_residual_m": {
+            "mean": float(np.mean(correspondence_error)),
+            "median": float(np.median(correspondence_error)),
+            "p95": float(np.quantile(correspondence_error, 0.95)),
+            "max": float(np.max(correspondence_error)),
+        },
+        "joint_matches": [list(value) for value in joint_matches],
         "visual_mesh_sha256": {
             path: sha256_file(path) for path in mesh_paths
         },
@@ -354,9 +579,16 @@ def _prepare_robot_visual_cache(
     return PhcRobotVisualCache(
         translations=translations,
         rotations=rotations,
-        scales=scales,
         colors=colors,
-        mesh_paths=tuple(mesh_paths),
+        mesh_names=tuple(mesh_names),
+        mesh_vertices=np.concatenate(compiled_vertices, axis=0),
+        mesh_vertex_offsets=np.asarray(vertex_offsets, dtype=np.int64),
+        mesh_faces=np.concatenate(compiled_faces, axis=0),
+        mesh_face_offsets=np.asarray(face_offsets, dtype=np.int64),
+        robot_match_positions=robot_match_positions,
+        match_robot_names=tuple(value[0] for value in joint_matches),
+        match_target_names=tuple(value[1] for value in joint_matches),
+        match_target_indices=target_indices,
         metadata=metadata,
     )
 
@@ -567,10 +799,12 @@ def prepare_phc_visualization(
         portable["log_path"] = portable_path(Path(str(portable["log_path"])))
         portable_commands.append(portable)
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "sequence_id": sequence_id,
         "source_format": "LAFAN1 22-joint BVH",
         "dataset_native_smpl": False,
+        "visualization_human_representation": "keypoints_only",
+        "human_skin_rendered": False,
         "smpl_adapter": {
             "path": skin_path.relative_to(repository_root).as_posix(),
             "sha256": sha256_file(skin_path),
@@ -604,24 +838,27 @@ def prepare_phc_visualization(
             "path": visual_path.relative_to(repository_root).as_posix(),
             "sha256": sha256_file(visual_path),
             "mesh_count": PHC_VISUAL_MESHES,
+            "mesh_vertex_space": visual_cache.metadata["mesh_vertex_space"],
+            "compiled_vertex_count": visual_cache.metadata[
+                "compiled_vertex_count"
+            ],
+            "compiled_triangle_count": visual_cache.metadata[
+                "compiled_triangle_count"
+            ],
+            "max_mesh_distance_from_root_m": visual_cache.metadata[
+                "max_mesh_distance_from_root_m"
+            ],
+            "frame_zero_assembled_bounds_m": visual_cache.metadata[
+                "frame_zero_assembled_bounds_m"
+            ],
+            "joint_fit_residual_m": visual_cache.metadata[
+                "joint_fit_residual_m"
+            ],
         },
         "commands_executed_this_run": portable_commands,
     }
     atomic_write_json(_preparation_manifest_path(repository_root), manifest)
     return manifest
-
-
-def _rotation_matrices_from_pose(pose_aa: np.ndarray) -> np.ndarray:
-    from scipy.spatial.transform import Rotation
-
-    return Rotation.from_rotvec(pose_aa[:, :3]).as_matrix()
-
-
-def _quaternion_wxyz_to_matrix(quaternion: np.ndarray) -> np.ndarray:
-    from scipy.spatial.transform import Rotation
-
-    xyzw = np.asarray(quaternion)[:, [1, 2, 3, 0]]
-    return Rotation.from_quat(xyzw).as_matrix()
 
 
 def _root_local_vertices(
@@ -630,27 +867,74 @@ def _root_local_vertices(
     return np.einsum("tvi,tij->tvj", vertices - roots[:, None, :], rotations)
 
 
-def _root_local_robot(
-    translations: np.ndarray,
-    rotations: np.ndarray,
-    roots: np.ndarray,
-    root_rotations: np.ndarray,
+def _skeleton_edges(parent_indices: np.ndarray) -> tuple[tuple[int, int], ...]:
+    return tuple(
+        (int(parent), child)
+        for child, parent in enumerate(parent_indices)
+        if parent >= 0
+    )
+
+
+def _skeleton_segments(
+    points: np.ndarray, edges: tuple[tuple[int, int], ...]
+) -> list[np.ndarray]:
+    return [points[[parent, child]] for parent, child in edges]
+
+
+def _compiled_mesh(
+    cache: PhcRobotVisualCache, visual: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    local_translations = np.einsum(
-        "tvi,tij->tvj", translations - roots[:, None, :], root_rotations
+    vertex_start, vertex_stop = cache.mesh_vertex_offsets[visual : visual + 2]
+    face_start, face_stop = cache.mesh_face_offsets[visual : visual + 2]
+    return (
+        cache.mesh_vertices[vertex_start:vertex_stop],
+        cache.mesh_faces[face_start:face_stop],
     )
-    local_rotations = np.einsum(
-        "tji,tvjk->tvik", root_rotations, rotations
-    )
-    return local_translations, local_rotations
 
 
-def _log_mesh_topology(rr: Any, entity: str, faces: np.ndarray, color: tuple[int, ...]) -> None:
+def _compiled_robot_ground_z(cache: PhcRobotVisualCache, frame: int) -> float:
+    ground = np.inf
+    for visual in range(len(cache.mesh_names)):
+        vertices, _ = _compiled_mesh(cache, visual)
+        world = (
+            vertices @ cache.rotations[frame, visual].T
+            + cache.translations[frame, visual]
+        )
+        ground = min(ground, float(np.min(world[:, 2])))
+    return float(ground)
+
+
+def _log_keypoint_skeleton(
+    rr: Any,
+    entity: str,
+    points: np.ndarray,
+    edges: tuple[tuple[int, int], ...],
+    *,
+    color: tuple[int, int, int],
+    labels: tuple[str, ...],
+) -> None:
     rr.log(
-        entity,
-        rr.Mesh3D.from_fields(triangle_indices=faces, albedo_factor=color),
-        static=True,
+        f"{entity}/bones",
+        rr.LineStrips3D(
+            _skeleton_segments(points, edges),
+            colors=color,
+            radii=0.009,
+        ),
     )
+    rr.log(
+        f"{entity}/joints",
+        rr.Points3D(
+            points,
+            colors=color,
+            radii=0.018,
+            labels=labels,
+            show_labels=False,
+        ),
+    )
+
+
+def _robot_mesh_entity(view: str, index: int, name: str) -> str:
+    return f"{view}/phc_g1_meshes/{index:02d}_{name}"
 
 
 def write_phc_rerun_visualization(
@@ -661,7 +945,7 @@ def write_phc_rerun_visualization(
     spawn: bool = False,
     max_frames: int | None = None,
 ) -> dict[str, Any]:
-    """Visualize original-size SMPL, PHC-scaled SMPL, and PHC's 37-DoF G1."""
+    """Visualize native BVH joints, PHC fitted targets, and PHC's 37-DoF G1."""
 
     try:
         import rerun as rr
@@ -675,85 +959,76 @@ def write_phc_rerun_visualization(
     root = Path(repo_root).resolve()
     sequence = load_yaml(root / "manifests" / "pilot_sequence.yaml")
     sequence_id = str(sequence["sequence_id"])
-    skin_path = default_skin_cache(root)
+    source_path = root / str(sequence["canonical_path"])
     prepared_path = _prepared_motion_path(root, sequence_id)
     visual_path = _visual_cache_path(root, sequence_id)
-    for path in (skin_path, prepared_path, visual_path):
+    for path in (source_path, prepared_path, visual_path):
         if not path.is_file():
             raise FileNotFoundError(
                 f"PHC visualization input is missing: {path}. "
                 "Run `rtcmp prepare-phc-visualization` in conda env capture."
             )
-    skin = SmplSkinMotion.load(skin_path)
+    human = CanonicalHuman.load(source_path)
     prepared = PhcPreparedMotion.load(prepared_path)
     robot = PhcRobotVisualCache.load(visual_path)
-    frames = min(len(prepared.qpos), len(skin.pose_aa_zup))
+    frames = min(len(prepared.qpos), len(human.timestamps))
     if max_frames is not None:
         frames = min(frames, max_frames)
     if frames < 1:
         raise ValueError("PHC visualization has no frames")
+    if not np.isclose(human.fps, prepared.fps, atol=1e-3):
+        raise ValueError("PHC output and canonical BVH have different timelines")
 
-    # Match the exact public PHC loader: poses[:, :66] plus six zeros.
-    phc_pose = skin.pose_aa_zup.copy()
-    phc_pose[:, 66:] = 0.0
-    input_skin = replace(skin, pose_aa_zup=phc_pose)
-    original_vertices, faces, _ = smpl_mesh_sequence(
-        input_skin, root, frame_limit=frames, batch_size=64, device="cpu"
-    )
-    scaled_vertices, scaled_faces, _ = smpl_mesh_sequence(
-        input_skin,
-        root,
-        betas=prepared.shape_betas,
-        body_scale=prepared.body_scale,
-        frame_limit=frames,
-        batch_size=64,
-        device="cpu",
-    )
-    if not np.array_equal(faces, scaled_faces):
-        raise ValueError("SMPL topology changed between original and PHC-scaled bodies")
-    original_roots = skin.root_positions_zup[:frames]
-    scaled_roots = prepared.smpl_joints[:frames, 0]
-    scaled_vertices += (
-        scaled_roots - skin.root_positions_zup[:frames]
-    )[:, None, :]
+    original_points = human.world_positions[:frames]
+    fitted_targets = prepared.smpl_joints[:frames]
+    original_roots = human.root_translation[:frames]
+    fitted_roots = fitted_targets[:, 0]
 
-    human_root_rotation = _rotation_matrices_from_pose(phc_pose[:frames])
-    robot_root_rotation = _quaternion_wxyz_to_matrix(prepared.qpos[:frames, 3:7])
-    original_local = _root_local_vertices(
-        original_vertices, original_roots, human_root_rotation
-    )
-    scaled_local = _root_local_vertices(
-        scaled_vertices, scaled_roots, human_root_rotation
-    )
-    robot_local_translation, robot_local_rotation = _root_local_robot(
-        robot.translations[:frames],
-        robot.rotations[:frames],
-        prepared.qpos[:frames, :3],
-        robot_root_rotation,
-    )
-
-    original_world = original_vertices - original_roots[0, None, :]
-    scaled_world = scaled_vertices - scaled_roots[0, None, :]
+    original_world = original_points - original_roots[0, None, :]
+    fitted_world = fitted_targets - fitted_roots[0, None, :]
     robot_world_translation = (
         robot.translations[:frames] - prepared.qpos[0, None, :3]
     )
-    original_ground = float(np.min(original_world[0, :, 2]))
-    scaled_ground = float(np.min(scaled_world[0, :, 2]))
-    robot_ground = float(np.min(robot_world_translation[0, :, 2]))
-    original_world[..., 2] -= original_ground
-    scaled_world[..., 2] -= scaled_ground
+    original_world[..., 2] -= float(np.min(original_world[0, :, 2]))
+    fitted_world[..., 2] -= float(np.min(fitted_world[0, :, 2]))
+    robot_ground = (
+        _compiled_robot_ground_z(robot, 0) - prepared.qpos[0, 2]
+    )
     robot_world_translation[..., 2] -= robot_ground
+
+    original_local = original_points - original_roots[:, None, :]
+    fitted_local = fitted_targets - fitted_roots[:, None, :]
+    robot_local_translation = (
+        robot.translations[:frames] - prepared.qpos[:frames, None, :3]
+    )
+    robot_match_local = (
+        robot.robot_match_positions[:frames]
+        - prepared.qpos[:frames, None, :3]
+    )
+    target_match_local = (
+        fitted_targets[:, robot.match_target_indices]
+        - fitted_roots[:, None, :]
+    )
+    correspondence_error = np.linalg.norm(
+        robot.robot_match_positions[:frames]
+        - fitted_targets[:, robot.match_target_indices],
+        axis=-1,
+    )
+
+    original_edges = _skeleton_edges(human.parent_indices)
+    target_edges = _skeleton_edges(PHC_SMPL_PARENT_INDICES)
+    source_labels = tuple(map(str, human.joint_names))
     lanes = {
-        "original": np.asarray((-2.7, 0.0, 0.0)),
-        "scaled": np.asarray((0.0, 0.0, 0.0)),
-        "robot": np.asarray((2.7, 0.0, 0.0)),
+        "original": np.asarray((-3.2, 0.0, 0.0)),
+        "fitted": np.asarray((0.0, 0.0, 0.0)),
+        "robot": np.asarray((3.2, 0.0, 0.0)),
     }
 
     blueprint = rrb.Blueprint(
         rrb.Tabs(
             rrb.Spatial3DView(
                 origin="/side_by_side",
-                name="Original size · PHC-scaled · PHC G1",
+                name="Native BVH · PHC fitted targets · PHC G1",
                 line_grid=True,
                 eye_controls=rrb.EyeControls3D(
                     position=(0.0, -10.0, 3.2),
@@ -763,13 +1038,17 @@ def write_phc_rerun_visualization(
             ),
             rrb.Spatial3DView(
                 origin="/root_overlay",
-                name="Root-frame scale and pose overlay",
+                name="Root-centered target correspondence",
                 line_grid=True,
                 eye_controls=rrb.EyeControls3D(
                     position=(2.8, -4.6, 2.2),
                     look_target=(0.0, 0.0, 0.7),
                     eye_up=(0.0, 0.0, 1.0),
                 ),
+            ),
+            rrb.TimeSeriesView(
+                origin="/metrics/joint_fit_error_m",
+                name="PHC target-fit residual",
             ),
             name="PHC scale narrative",
         ),
@@ -781,7 +1060,11 @@ def write_phc_rerun_visualization(
     if not output_path.is_absolute():
         output_path = root / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    digest = sha256_file(prepared_path) + sha256_file(skin_path)
+    digest = (
+        sha256_file(prepared_path)
+        + sha256_file(source_path)
+        + sha256_file(visual_path)
+    )
     recording_id = str(uuid.UUID(bytes=bytes.fromhex(digest[:32])))
     rr.init(
         "phc_lafan_scale_three_way",
@@ -795,32 +1078,55 @@ def write_phc_rerun_visualization(
     rr.send_blueprint(blueprint)
     for view in ("side_by_side", "root_overlay"):
         rr.log(view, rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
-        _log_mesh_topology(
-            rr, f"{view}/original_size_smpl", faces, (80, 160, 235, 210)
-        )
-        _log_mesh_topology(
-            rr, f"{view}/phc_scaled_smpl", faces, (236, 156, 69, 185)
-        )
-        for index, mesh_path in enumerate(robot.mesh_paths):
+        for index, mesh_name in enumerate(robot.mesh_names):
+            vertices, faces = _compiled_mesh(robot, index)
             color = tuple(
                 int(np.clip(channel * 255.0, 0.0, 255.0))
                 for channel in robot.colors[index]
             )
             rr.log(
-                f"{view}/phc_g1_meshes/{index:02d}_{Path(mesh_path).stem}",
-                rr.Asset3D(path=mesh_path, albedo_factor=color),
+                _robot_mesh_entity(view, index, mesh_name),
+                rr.Mesh3D(
+                    vertex_positions=vertices,
+                    triangle_indices=faces,
+                    albedo_factor=color,
+                ),
                 static=True,
             )
+    rr.log(
+        "metrics/joint_fit_error_m/mean",
+        rr.SeriesLines(
+            names="mean of 16 official PHC joint matches",
+            colors=(238, 192, 78),
+            widths=2.0,
+        ),
+        static=True,
+    )
+    rr.log(
+        "metrics/joint_fit_error_m/p95",
+        rr.SeriesLines(
+            names="per-frame p95",
+            colors=(223, 91, 91),
+            widths=2.0,
+        ),
+        static=True,
+    )
     readme = "\n".join(
         (
             "# PHC public G1 fitting · scale narrative",
             "",
             "- Original LAFAN1 asset: 22-joint BVH, not SMPL or SMPL-X.",
-            "- Blue: visualization-only SMPL fit at the fitted actor size.",
-            "- Orange: the same pose after PHC replaces actor shape with its neutral, robot-fitted SMPL shape and scalar.",
-            "- Gray: the official public PHC G1 fitting result.",
+            "- Blue: the native 22 BVH joint positions; no fitted human skin is rendered.",
+            "- Orange: the exact 24 target joint positions saved by PHC after its internal neutral-shape fit and scale policy.",
+            "- Gray: the official public PHC G1 fitting result rendered from MuJoCo-compiled meshes.",
             f"- PHC shape scalar: {prepared.body_scale:.6f}.",
+            (
+                "- Saved-target to G1 joint-fit residual: "
+                f"{float(robot.metadata['joint_fit_residual_m']['mean']) * 1000.0:.1f} mm mean, "
+                f"{float(robot.metadata['joint_fit_residual_m']['p95']) * 1000.0:.1f} mm p95."
+            ),
             f"- PHC embodiment: {PHC_ACTUATED_DOFS} motors ({PHC_BODY_DOFS} body + {PHC_HAND_DOFS} hand/finger), not canonical G1-29.",
+            "- Raw STL files are not transformed directly: the recording embeds MuJoCo's compiled geom-local vertices to avoid applying the mesh reference pose twice.",
             "- This recording is an explanatory PHC visualization, not a Stage 1 metric operating point.",
         )
     )
@@ -834,62 +1140,94 @@ def write_phc_rerun_visualization(
         rr.set_time("frame", sequence=frame)
         rr.set_time("time", duration=float(frame / prepared.fps))
         rr.log("metadata/frame_marker", rr.Scalars(float(frame)))
-        rr.log(
-            "side_by_side/original_size_smpl",
-            rr.Mesh3D.from_fields(
-                vertex_positions=original_world[frame] + lanes["original"]
-            ),
+        _log_keypoint_skeleton(
+            rr,
+            "side_by_side/original_lafan_bvh",
+            original_world[frame] + lanes["original"],
+            original_edges,
+            color=(80, 160, 235),
+            labels=source_labels,
         )
-        rr.log(
-            "side_by_side/phc_scaled_smpl",
-            rr.Mesh3D.from_fields(
-                vertex_positions=scaled_world[frame] + lanes["scaled"]
-            ),
+        _log_keypoint_skeleton(
+            rr,
+            "side_by_side/phc_robot_fitted_targets",
+            fitted_world[frame] + lanes["fitted"],
+            target_edges,
+            color=(236, 156, 69),
+            labels=PHC_SMPL_JOINT_NAMES,
         )
-        rr.log(
-            "root_overlay/original_size_smpl",
-            rr.Mesh3D.from_fields(vertex_positions=original_local[frame]),
+        _log_keypoint_skeleton(
+            rr,
+            "root_overlay/original_lafan_bvh",
+            original_local[frame],
+            original_edges,
+            color=(80, 160, 235),
+            labels=source_labels,
         )
-        rr.log(
-            "root_overlay/phc_scaled_smpl",
-            rr.Mesh3D.from_fields(vertex_positions=scaled_local[frame]),
+        _log_keypoint_skeleton(
+            rr,
+            "root_overlay/phc_robot_fitted_targets",
+            fitted_local[frame],
+            target_edges,
+            color=(236, 156, 69),
+            labels=PHC_SMPL_JOINT_NAMES,
         )
         rr.log(
             "side_by_side/labels",
             rr.Points3D(
                 [
-                    lanes["original"] + (0.0, 0.0, 1.2),
-                    lanes["scaled"] + (0.0, 0.0, 1.2),
-                    lanes["robot"] + (0.0, 0.0, 1.2),
+                    lanes["original"] + (0.0, 0.0, 1.75),
+                    lanes["fitted"] + (0.0, 0.0, 1.35),
+                    lanes["robot"] + (0.0, 0.0, 1.45),
                 ],
                 colors=[(80, 160, 235), (236, 156, 69), (210, 210, 210)],
                 radii=0.001,
                 labels=[
-                    "Original-size fitted SMPL",
-                    "PHC robot-fitted shape + scale",
-                    "PHC public G1 · 37 motors",
+                    "Native LAFAN1 BVH",
+                    "PHC fitted targets",
+                    "PHC G1 · 37 motors",
                 ],
                 show_labels=True,
             ),
         )
-        for index, mesh_path in enumerate(robot.mesh_paths):
-            entity = f"{index:02d}_{Path(mesh_path).stem}"
+        rr.log(
+            "root_overlay/official_joint_correspondence",
+            rr.LineStrips3D(
+                [
+                    np.stack((target, robot_point))
+                    for target, robot_point in zip(
+                        target_match_local[frame],
+                        robot_match_local[frame],
+                        strict=True,
+                    )
+                ],
+                colors=(245, 220, 87),
+                radii=0.004,
+            ),
+        )
+        rr.log(
+            "metrics/joint_fit_error_m/mean",
+            rr.Scalars(float(np.mean(correspondence_error[frame]))),
+        )
+        rr.log(
+            "metrics/joint_fit_error_m/p95",
+            rr.Scalars(float(np.quantile(correspondence_error[frame], 0.95))),
+        )
+        for index, mesh_name in enumerate(robot.mesh_names):
             rr.log(
-                f"side_by_side/phc_g1_meshes/{entity}",
+                _robot_mesh_entity("side_by_side", index, mesh_name),
                 rr.InstancePoses3D(
                     translations=[
                         robot_world_translation[frame, index] + lanes["robot"]
                     ],
                     mat3x3=[robot.rotations[frame, index]],
-                    scales=[robot.scales[index]],
                 ),
             )
             rr.log(
-                f"root_overlay/phc_g1_meshes/{entity}",
+                _robot_mesh_entity("root_overlay", index, mesh_name),
                 rr.InstancePoses3D(
                     translations=[robot_local_translation[frame, index]],
-                    mat3x3=[robot_local_rotation[frame, index]],
-                    scales=[robot.scales[index]],
+                    mat3x3=[robot.rotations[frame, index]],
                 ),
             )
     rr.disconnect()
@@ -918,14 +1256,15 @@ def write_phc_rerun_visualization(
     except ValueError:
         portable_output = str(output_path)
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "sequence_id": sequence_id,
         "frames": frames,
         "fps": prepared.fps,
         "source_format": "LAFAN1 22-joint BVH",
         "dataset_native_smpl": False,
-        "human_rendering": "visualization_only_fitted_smpl",
-        "views": ["side_by_side", "root_overlay"],
+        "human_rendering": "native_bvh_and_phc_target_keypoints",
+        "human_skin_rendered": False,
+        "views": ["side_by_side", "root_overlay", "joint_fit_error_m"],
         "phc": {
             "commit": PHC_COMMIT,
             "config": PHC_CONFIG,
@@ -935,11 +1274,18 @@ def write_phc_rerun_visualization(
             "canonical_g1_29_compatible": False,
             "body_scale": prepared.body_scale,
             "visual_meshes": PHC_VISUAL_MESHES,
+            "mesh_vertex_space": robot.metadata["mesh_vertex_space"],
+            "compiled_vertex_count": robot.metadata["compiled_vertex_count"],
+            "compiled_triangle_count": robot.metadata["compiled_triangle_count"],
+            "max_mesh_distance_from_root_m": robot.metadata[
+                "max_mesh_distance_from_root_m"
+            ],
+            "joint_fit_residual_m": robot.metadata["joint_fit_residual_m"],
         },
         "inputs": {
-            "smpl_skin": {
-                "path": skin_path.relative_to(root).as_posix(),
-                "sha256": sha256_file(skin_path),
+            "canonical_bvh_package": {
+                "path": source_path.relative_to(root).as_posix(),
+                "sha256": sha256_file(source_path),
             },
             "prepared_motion": {
                 "path": prepared_path.relative_to(root).as_posix(),

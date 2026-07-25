@@ -2,41 +2,53 @@
   "dataset_native_smpl": false,
   "fps": 30.0,
   "frames": 600,
-  "human_rendering": "visualization_only_fitted_smpl",
+  "human_rendering": "native_bvh_and_phc_target_keypoints",
+  "human_skin_rendered": false,
   "inputs": {
+    "canonical_bvh_package": {
+      "path": "source/canonical_human/dance1_subject1_f000000_000600.npz",
+      "sha256": "28d7be2545e8fae25671cd3ae84209f951f45829b86409ffdf4e2dba1aca5402"
+    },
     "prepared_motion": {
       "path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/phc_official_g1_37dof.npz",
       "sha256": "c17f15e35e8c25000f3a4107e9903fdad380bb202f4b2c6640c3c0a330e19ead"
     },
     "robot_visual_cache": {
       "path": "artifacts/phc_visualization/dance1_subject1_f000000_000600/phc_g1_visual_transforms.npz",
-      "sha256": "70c74b35ed95b74b7a58265498fcf923002b30b78c8f72858538e55d11c322c3"
-    },
-    "smpl_skin": {
-      "path": "source_adapters/smpl_skin/dance1_subject1_f000000_000600/lafan_bvh_fitted_smpl.npz",
-      "sha256": "fde95df18a6323aa959100ceb444d9b11930bf51c4d6dcf7946482c7e9be1f6e"
+      "sha256": "40eec98146b6dd6adb1d7ba937c88b9d292b2abff6dded89e1a63d8ea9a20216"
     }
   },
   "output": "artifacts/visualization/phc_scale_three_way.rrd",
-  "output_sha256": "2d4bcab61b8f4705fc34480dbd32643eb28ac14f9dd50fc18b79d71a8c8948b7",
-  "output_size_bytes": 223141438,
+  "output_sha256": "6d8fab742a01c59cdf96813c06125951a5004a5f541d7adf135d8270ec667029",
+  "output_size_bytes": 19549084,
   "phc": {
     "actuated_dofs": 37,
     "body_dofs": 23,
     "body_scale": 0.6542500257492065,
     "canonical_g1_29_compatible": false,
     "commit": "846988d433ce1f341e85ac6fbd2cd51911bb3341",
+    "compiled_triangle_count": 342824,
+    "compiled_vertex_count": 167725,
     "config": "unitree_g1_fitting",
     "hand_finger_dofs": 14,
+    "joint_fit_residual_m": {
+      "max": 0.09700730913242901,
+      "mean": 0.031771454134295475,
+      "median": 0.03174504113854063,
+      "p95": 0.06380774993372881
+    },
+    "max_mesh_distance_from_root_m": 0.8445470895823973,
+    "mesh_vertex_space": "mujoco_compiled_geom_local",
     "visual_meshes": 43
   },
   "rerun_version": "0.34.1",
   "rrd_verify": "passed",
-  "schema_version": 1,
+  "schema_version": 2,
   "sequence_id": "dance1_subject1_f000000_000600",
   "source_format": "LAFAN1 22-joint BVH",
   "views": [
     "side_by_side",
-    "root_overlay"
+    "root_overlay",
+    "joint_fit_error_m"
   ]
 }

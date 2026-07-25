@@ -544,7 +544,7 @@ def audit_interactive_delivery(
         if rerun != _json(rerun_path):
             raise ValueError("Interactive report embeds a stale Rerun manifest")
         if (
-            int(rerun.get("schema_version", 0)) != 6
+            int(rerun.get("schema_version", 0)) != 7
             or rerun.get("methods") != list(EXPECTED_TRAJECTORY_KEYS)
             or rerun.get("rrd_verification", {}).get("result") != "verified"
         ):

@@ -124,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     visualization.add_argument("--stride", type=int, default=1)
     diagnostic_visualization = sub.add_parser(
         "visualize-current-results",
-        help="rebuild the frozen current nine-method diagnostic with a fitted SMPL source",
+        help="rebuild the frozen current nine-method diagnostic with native BVH keypoints",
     )
     diagnostic_visualization.add_argument("--repo-root", default=".")
     diagnostic_visualization.add_argument(
@@ -138,14 +138,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         default=(
             "artifacts/visualization/"
-            "stage1_current_completed_9methods_smpl.rrd"
+            "stage1_current_completed_9methods_bvh.rrd"
         ),
     )
     diagnostic_visualization.add_argument(
         "--manifest",
         default=(
             "artifacts/visualization/"
-            "stage1_current_completed_9methods_smpl.manifest.json"
+            "stage1_current_completed_9methods_bvh.manifest.json"
         ),
     )
     diagnostic_visualization.add_argument("--spawn", action="store_true")
